@@ -254,8 +254,8 @@ export default function JobDetail() {
 
           {canComplete ? (
             <TouchableOpacity testID="complete-btn" style={brutal.buttonOutline} onPress={complete} disabled={busy}>
-              <CheckCircle2 size={18} color="#000" strokeWidth={3} />
-              <Text style={brutal.buttonText}>Mark Complete</Text>
+              <CheckCircle2 size={18} color={colors.text} strokeWidth={2.4} />
+              <Text style={brutal.buttonTextDark}>Mark Complete</Text>
             </TouchableOpacity>
           ) : null}
 
@@ -265,15 +265,15 @@ export default function JobDetail() {
               style={brutal.buttonPrimary}
               onPress={() => router.push(`/review/${job.id}`)}
             >
-              <Star size={18} color="#000" strokeWidth={3} />
+              <Star size={18} color="#fff" strokeWidth={2.4} />
               <Text style={brutal.buttonText}>Leave Review</Text>
             </TouchableOpacity>
           ) : null}
 
           {isPoster && job.status === "open" ? (
-            <TouchableOpacity testID="cancel-job-btn" style={brutal.buttonOutline} onPress={cancel}>
-              <XCircle size={18} color="#000" strokeWidth={3} />
-              <Text style={brutal.buttonText}>Cancel Job</Text>
+            <TouchableOpacity testID="cancel-job-btn" style={[brutal.buttonOutline, { borderColor: colors.error }]} onPress={cancel}>
+              <XCircle size={18} color={colors.error} strokeWidth={2.4} />
+              <Text style={[brutal.buttonTextDark, { color: colors.error }]}>Cancel Job</Text>
             </TouchableOpacity>
           ) : null}
         </View>

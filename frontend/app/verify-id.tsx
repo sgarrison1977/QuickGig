@@ -114,7 +114,7 @@ export default function VerifyId() {
         </TouchableOpacity>
 
         <TouchableOpacity testID="skip-verify" style={brutal.buttonOutline} onPress={skip}>
-          <Text style={brutal.buttonText}>Skip for now (browse only)</Text>
+          <Text style={brutal.buttonTextDark}>Skip for now (browse only)</Text>
         </TouchableOpacity>
 
         <Text style={styles.note}>
