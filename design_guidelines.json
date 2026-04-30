@@ -1,0 +1,133 @@
+{
+  "theme": {
+    "name": "Neo-Brutalist Play",
+    "archetype": "Archetype 3 (Pastel & Soft) mixed with Neo-Brutalist contrast",
+    "mode": "Light",
+    "rationale": "The user requested an 'eye-catching and not dull and bland' aesthetic for a gig economy app. A Neo-Brutalist approach with vibrant pastels, thick black outlines, and hard shadows provides a highly energetic, trustworthy, and modern vibe that breaks away from boring corporate utility apps."
+  },
+  "colors": {
+    "background": {
+      "default": "#FDFBF7",
+      "surface": "#FFFFFF",
+      "alt": "#FFE66D"
+    },
+    "primary": {
+      "main": "#FF6B6B",
+      "content": "#000000"
+    },
+    "secondary": {
+      "main": "#4ECDC4",
+      "content": "#000000"
+    },
+    "accent": {
+      "yellow": "#FFE66D",
+      "orange": "#FF9F1C"
+    },
+    "text": {
+      "primary": "#1A1A1A",
+      "secondary": "#4A4A4A",
+      "disabled": "#A0A0A0"
+    },
+    "border": {
+      "hard": "#000000",
+      "light": "#E5E5E5"
+    },
+    "status": {
+      "success": "#2D6A4F",
+      "warning": "#FF9F1C",
+      "error": "#E63946",
+      "verified": "#3A86FF"
+    }
+  },
+  "typography": {
+    "heading_font": "Outfit",
+    "body_font": "Manrope",
+    "scales": {
+      "h1": "text-4xl tracking-tighter font-black",
+      "h2": "text-3xl tracking-tight font-extrabold",
+      "h3": "text-2xl font-bold",
+      "body": "text-base leading-relaxed font-medium",
+      "caption": "text-sm font-bold tracking-[0.05em] uppercase"
+    },
+    "rules": [
+      "Headings MUST be thick and tight.",
+      "Never center text by default; use left alignment for strong vertical rhythm."
+    ]
+  },
+  "spacing_and_layout": {
+    "philosophy": "Generous spacing combined with stark, chunky containers.",
+    "scale": "p-4, p-6, p-8 for containers",
+    "border_radius": "rounded-none or rounded-lg (if rounded, max 8px for brutalist feel)",
+    "shadows": {
+      "brutalist": "4px 4px 0px 0px rgba(0,0,0,1)",
+      "brutalist_large": "8px 8px 0px 0px rgba(0,0,0,1)"
+    }
+  },
+  "components": {
+    "cards": "bg-white border-2 border-black shadow-[4px_4px_0_0_#000000] p-6",
+    "buttons": {
+      "primary": "bg-[#FF6B6B] text-black font-black border-2 border-black shadow-[4px_4px_0_0_#000000] py-4 px-6 uppercase active:translate-y-1 active:translate-x-1 active:shadow-none",
+      "secondary": "bg-[#FFE66D] text-black font-black border-2 border-black shadow-[4px_4px_0_0_#000000] py-4 px-6 uppercase active:translate-y-1 active:translate-x-1 active:shadow-none"
+    },
+    "inputs": "bg-white border-2 border-black p-4 text-base font-medium focus-within:ring-2 focus-within:ring-[#FF6B6B] focus-within:shadow-[4px_4px_0_0_#000000]",
+    "badges": "bg-[#4ECDC4] text-black border-2 border-black px-3 py-1 font-bold text-xs uppercase"
+  },
+  "motion": {
+    "interactions": "Physical and tactile. Buttons press down physically (translate X and Y, remove shadow). Lists stagger in.",
+    "transitions": "Snappy, no slow fades. 150ms ease-out."
+  },
+  "icons": {
+    "library": "lucide-react-native",
+    "style": "stroke-black stroke-[2.5]"
+  },
+  "media": {
+    "abstract_patterns": [
+      {
+        "url": "https://images.unsplash.com/photo-1753024678749-6fa3f0ce8a16?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwxfHxhYnN0cmFjdCUyMG5lbyUyMGJydXRhbGlzbSUyMHBhdHRlcm58ZW58MHx8fHwxNzc3NTU1MTM1fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Geometric pattern with coral, blue, and orange shapes (Use as Hero/Header background)"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1753024678798-1987369d9142?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwyfHxhYnN0cmFjdCUyMG5lbyUyMGJydXRhbGlzbSUyMHBhdHRlcm58ZW58MHx8fHwxNzc3NTU1MTM1fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Stylized geometric pattern with repeating motifs (Use for onboarding screens)"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1744057137174-72a54712fd83?crop=entropy&cs=srgb&fm=jpg&ixid=M3w3NTY2NjZ8MHwxfHNlYXJjaHwzfHxhYnN0cmFjdCUyMG5lbyUyMGJydXRhbGlzbSUyMHBhdHRlcm58ZW58MHx8fHwxNzc3NTU1MTM1fDA&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract geometric pattern with red circles and yellow shapes (Use for empty states)"
+      }
+    ],
+    "job_categories": [
+      {
+        "url": "https://images.unsplash.com/photo-1766010203610-86665f86acb4?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwyfHxsYXduJTIwY2FyZSUyMHdvcmtlcnxlbnwwfHx8fDE3Nzc1NTUxMzB8MA&ixlib=rb-4.1.0&q=85",
+        "description": "Lawn care placeholder"
+      },
+      {
+        "url": "https://images.pexels.com/photos/6196566/pexels-photo-6196566.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Cleaning house placeholder"
+      },
+      {
+        "url": "https://images.pexels.com/photos/11400234/pexels-photo-11400234.jpeg?auto=compress&cs=tinysrgb&dpr=2&h=650&w=940",
+        "description": "Grass trimming placeholder"
+      }
+    ],
+    "avatars": [
+      {
+        "url": "https://images.unsplash.com/photo-1740252117044-2af197eea287?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwxfHxzbWlsaW5nJTIwd29ya2VyJTIwYXZhdGFyfGVufDB8fHx8MTc3NzU1NTEzNXww&ixlib=rb-4.1.0&q=85",
+        "description": "Avatar placeholder 1"
+      },
+      {
+        "url": "https://images.unsplash.com/photo-1772371272174-392cf9cfabae?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjY2NzV8MHwxfHNlYXJjaHwzfHxzbWlsaW5nJTIwd29ya2VyJTIwYXZhdGFyfGVufDB8fHx8MTc3NzU1NTEzNXww&ixlib=rb-4.1.0&q=85",
+        "description": "Avatar placeholder 2"
+      }
+    ]
+  },
+  "instructions_to_main_agent": [
+    "Use NativeWind or manual StyleSheet to replicate Tailwind classes provided in the design guidelines.",
+    "Do NOT use generic rounded borders with soft shadows. Strictly adhere to hard black borders (borderWidth: 2, borderColor: '#000') and hard offset shadows (shadowColor: '#000', shadowOffset: { width: 4, height: 4 }, shadowOpacity: 1, shadowRadius: 0).",
+    "For the 'Verified Badge', use a bold blue or mint green with a checkmark icon, retaining the hard outline.",
+    "Use standard BottomTab navigation with thick black top borders.",
+    "Ensure all interactive elements have a 'testID' attribute using kebab-case role-based naming.",
+    "Never use placeholder image services (like via.placeholder.com). ONLY use the media URLs provided in this JSON.",
+    "For icons, use lucide-react-native if possible, keeping strokeWidth heavy (e.g., 2.5 or 3).",
+    "Since this is React Native Expo, translate the neo-brutalist tailwind instructions into React Native StyleSheet properties carefully (e.g., shadow behaviors vary between iOS and Android, so apply elevation for Android along with border tricks)."
+  ]
+}
