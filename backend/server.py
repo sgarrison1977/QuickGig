@@ -72,6 +72,11 @@ def public_user(u: dict) -> dict:
     """Strip sensitive fields from user dict."""
     if not u:
         return u
+    # Mongo returns naive datetimes — make tz-aware before comparing
+    pro_exp = u.get("pro_expires_at")
+    if isinstance(pro_exp, datetime) and pro_exp.tzinfo is None:
+        pro_exp = pro_exp.replace(tzinfo=timezone.utc)
+    is_pro_active = bool(u.get("is_pro", False)) and (pro_exp is None or pro_exp > datetime.now(timezone.utc))
     return {
         "id": u["id"],
         "email": u.get("email"),
@@ -85,10 +90,8 @@ def public_user(u: dict) -> dict:
         "rating_avg": u.get("rating_avg", 0.0),
         "rating_count": u.get("rating_count", 0),
         "jobs_completed": u.get("jobs_completed", 0),
-        "is_pro": bool(u.get("is_pro", False)) and (
-            u.get("pro_expires_at") is None or u.get("pro_expires_at") > datetime.now(timezone.utc)
-        ),
-        "pro_expires_at": u["pro_expires_at"].isoformat() if isinstance(u.get("pro_expires_at"), datetime) else None,
+        "is_pro": is_pro_active,
+        "pro_expires_at": pro_exp.isoformat() if isinstance(pro_exp, datetime) else None,
         "has_background_check": u.get("has_background_check", False),
         "created_at": u.get("created_at").isoformat() if u.get("created_at") else None,
     }
@@ -253,6 +256,8 @@ async def update_profile(data: ProfileUpdateIn, user: dict = Depends(get_current
 def public_job(j: dict, poster: Optional[dict] = None, worker: Optional[dict] = None,
                distance: Optional[float] = None) -> dict:
     boosted_until = j.get("boosted_until")
+    if isinstance(boosted_until, datetime) and boosted_until.tzinfo is None:
+        boosted_until = boosted_until.replace(tzinfo=timezone.utc)
     is_boosted = bool(boosted_until and isinstance(boosted_until, datetime) and boosted_until > datetime.now(timezone.utc))
     return {
         "id": j["id"],
@@ -718,6 +723,8 @@ async def boost_post(data: BoostIn, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Only the poster can boost")
     hours = 24 if data.plan == "24h" else 48
     existing = j.get("boosted_until")
+    if isinstance(existing, datetime) and existing.tzinfo is None:
+        existing = existing.replace(tzinfo=timezone.utc)
     now = datetime.now(timezone.utc)
     base = existing if isinstance(existing, datetime) and existing > now else now
     new_until = base + timedelta(hours=hours)
