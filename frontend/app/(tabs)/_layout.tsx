@@ -1,9 +1,13 @@
 import { Tabs } from "expo-router";
 import { View, StyleSheet, Platform } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { Search, Plus, MessageCircle, User } from "lucide-react-native";
 import { colors } from "../../src/theme";
 
 export default function TabsLayout() {
+  const insets = useSafeAreaInsets();
+  const bottomPad = Math.max(insets.bottom, 12);
+
   return (
     <Tabs
       screenOptions={{
@@ -12,15 +16,12 @@ export default function TabsLayout() {
         tabBarInactiveTintColor: colors.textDisabled,
         tabBarStyle: {
           backgroundColor: colors.surface,
-          borderTopWidth: 0,
-          height: Platform.OS === "ios" ? 86 : 70,
+          borderTopWidth: 1,
+          borderTopColor: colors.border,
+          height: 64 + bottomPad,
           paddingTop: 10,
-          paddingBottom: Platform.OS === "ios" ? 28 : 12,
+          paddingBottom: bottomPad,
           elevation: 12,
-          shadowColor: "#0E1230",
-          shadowOffset: { width: 0, height: -4 },
-          shadowOpacity: 0.06,
-          shadowRadius: 16,
         },
         tabBarLabelStyle: { fontSize: 11, fontWeight: "700", marginTop: 2 },
       }}
@@ -36,8 +37,8 @@ export default function TabsLayout() {
         name="post"
         options={{
           title: "Post",
-          tabBarIcon: () => (
-            <View style={styles.postBtn}>
+          tabBarIcon: ({ focused }) => (
+            <View style={[styles.postBtn, focused && styles.postBtnActive]}>
               <Plus size={22} color="#fff" strokeWidth={3} />
             </View>
           ),
@@ -63,17 +64,21 @@ export default function TabsLayout() {
 
 const styles = StyleSheet.create({
   postBtn: {
-    width: 46,
-    height: 46,
-    borderRadius: 23,
+    width: 44,
+    height: 44,
+    borderRadius: 22,
     backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-    marginTop: -4,
-    shadowColor: colors.primary,
-    shadowOffset: { width: 0, height: 6 },
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    elevation: 6,
+    ...Platform.select({
+      ios: {
+        shadowColor: colors.primary,
+        shadowOffset: { width: 0, height: 4 },
+        shadowOpacity: 0.4,
+        shadowRadius: 10,
+      },
+      android: { elevation: 5 },
+    }),
   },
+  postBtnActive: { backgroundColor: colors.primaryDark },
 });

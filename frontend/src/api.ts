@@ -61,14 +61,14 @@ export async function api<T = any>(path: string, opts: Options = {}): Promise<T>
 }
 
 export const CATEGORIES = [
-  { key: "lawn", label: "Lawn Care", emoji: "🌿", color: "#A8E6A0" },
-  { key: "cleaning", label: "Cleaning", emoji: "🧽", color: "#4ECDC4" },
-  { key: "painting", label: "Painting", emoji: "🎨", color: "#FF9F1C" },
-  { key: "handyman", label: "Handyman", emoji: "🔧", color: "#FFE66D" },
-  { key: "moving", label: "Moving", emoji: "📦", color: "#FF6B6B" },
-  { key: "pet", label: "Pet Care", emoji: "🐾", color: "#C9A0FF" },
-  { key: "errands", label: "Errands", emoji: "🛒", color: "#7FC8F8" },
-  { key: "other", label: "Other", emoji: "✨", color: "#F4A6CD" },
+  { key: "lawn",     label: "Lawn Care", emoji: "🌿", color: "#A8E6A0", image: "https://images.unsplash.com/photo-1558904541-efa843a96f01?auto=format&fit=crop&w=400&q=60" },
+  { key: "cleaning", label: "Cleaning",  emoji: "🧽", color: "#4ECDC4", image: "https://images.unsplash.com/photo-1581578731548-c64695cc6952?auto=format&fit=crop&w=400&q=60" },
+  { key: "painting", label: "Painting",  emoji: "🎨", color: "#FF9F1C", image: "https://images.unsplash.com/photo-1562259949-e8e7689d7828?auto=format&fit=crop&w=400&q=60" },
+  { key: "handyman", label: "Handyman",  emoji: "🔧", color: "#FFE66D", image: "https://images.unsplash.com/photo-1581244277943-fe4a9c777189?auto=format&fit=crop&w=400&q=60" },
+  { key: "moving",   label: "Moving",    emoji: "📦", color: "#FF6B6B", image: "https://images.unsplash.com/photo-1600585154340-be6161a56a0c?auto=format&fit=crop&w=400&q=60" },
+  { key: "pet",      label: "Pet Care",  emoji: "🐾", color: "#C9A0FF", image: "https://images.unsplash.com/photo-1583337130417-3346a1be7dee?auto=format&fit=crop&w=400&q=60" },
+  { key: "errands",  label: "Errands",   emoji: "🛒", color: "#7FC8F8", image: "https://images.unsplash.com/photo-1601598851547-4302969d0614?auto=format&fit=crop&w=400&q=60" },
+  { key: "other",    label: "Other",     emoji: "✨", color: "#F4A6CD", image: "https://images.unsplash.com/photo-1521791136064-7986c2920216?auto=format&fit=crop&w=400&q=60" },
 ];
 
 export function categoryMeta(key: string) {

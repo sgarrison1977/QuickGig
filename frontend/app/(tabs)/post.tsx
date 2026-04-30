@@ -16,7 +16,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
-import { MapPin, Camera, X, Plus, ShieldAlert } from "lucide-react-native";
+import { MapPin, Camera, X, Plus, ShieldAlert, ShieldCheck } from "lucide-react-native";
 import { api, CATEGORIES } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, brutal } from "../../src/theme";
@@ -39,20 +39,30 @@ export default function PostJob() {
   if (user && !user.is_verified) {
     return (
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={styles.gateBox}>
-          <View style={styles.gateIcon}>
-            <ShieldAlert size={36} color="#000" strokeWidth={2.5} />
+        <ScrollView contentContainerStyle={styles.gateScroll}>
+          <Image
+            source={{ uri: "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=900&q=70" }}
+            style={styles.gateHero}
+          />
+          <View style={styles.gateBox}>
+            <View style={styles.gateIcon}>
+              <ShieldAlert size={32} color={colors.primary} strokeWidth={2.4} />
+            </View>
+            <Text style={styles.h1}>Verify your ID first</Text>
+            <Text style={styles.muted}>
+              For everyone&apos;s safety, both posters and workers verify their identity before posting or accepting jobs. It only takes a minute.
+            </Text>
+            <TouchableOpacity
+              testID="goto-verify"
+              style={[brutal.buttonPrimary, { width: "100%" }]}
+              onPress={() => router.push("/verify-id")}
+              activeOpacity={0.9}
+            >
+              <ShieldCheck size={18} color="#fff" strokeWidth={2.6} />
+              <Text style={brutal.buttonText}>Verify Now</Text>
+            </TouchableOpacity>
           </View>
-          <Text style={styles.h1}>Verify ID first</Text>
-          <Text style={styles.muted}>You need to verify your identity before posting a job.</Text>
-          <TouchableOpacity
-            testID="goto-verify"
-            style={brutal.buttonPrimary}
-            onPress={() => router.push("/verify-id")}
-          >
-            <Text style={brutal.buttonText}>Verify Now</Text>
-          </TouchableOpacity>
-        </View>
+        </ScrollView>
       </SafeAreaView>
     );
   }
@@ -345,15 +355,17 @@ const styles = StyleSheet.create({
     fontWeight: "600",
     fontSize: 13,
   },
-  gateBox: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 16 },
+  gateScroll: { paddingBottom: 40 },
+  gateHero: { width: "100%", height: 220 },
+  gateBox: { padding: 24, gap: 14, marginTop: -30, backgroundColor: colors.bg, borderTopLeftRadius: 28, borderTopRightRadius: 28 },
   gateIcon: {
-    width: 80,
-    height: 80,
+    width: 64,
+    height: 64,
     backgroundColor: colors.primarySoft,
-    borderRadius: 22,
+    borderRadius: 18,
     alignItems: "center",
     justifyContent: "center",
   },
-  h1: { fontSize: 26, fontWeight: "800", color: colors.text },
-  muted: { color: colors.textSecondary, fontWeight: "500", textAlign: "center" },
+  h1: { fontSize: 26, fontWeight: "800", color: colors.text, letterSpacing: -0.6 },
+  muted: { color: colors.textSecondary, fontWeight: "500", lineHeight: 22 },
 });
