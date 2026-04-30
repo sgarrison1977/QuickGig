@@ -274,20 +274,21 @@ export default function JobDetail() {
             <TouchableOpacity
               testID="cancel-job-btn"
               style={{
-                backgroundColor: colors.error,
+                backgroundColor: "#EF4444",
                 borderRadius: 16,
                 paddingVertical: 16,
                 paddingHorizontal: 20,
                 flexDirection: "row",
                 alignItems: "center",
                 justifyContent: "center",
-                gap: 8,
               }}
               onPress={cancel}
               activeOpacity={0.85}
             >
-              <XCircle size={18} color="#fff" strokeWidth={2.6} />
-              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Cancel Job</Text>
+              <XCircle size={18} color="#FFFFFF" strokeWidth={2.6} style={{ marginRight: 8 }} />
+              <Text style={{ color: "#FFFFFF", fontWeight: "700", fontSize: 16 }}>
+                Cancel Job
+              </Text>
             </TouchableOpacity>
           ) : null}
         </View>
