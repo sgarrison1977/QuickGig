@@ -8,12 +8,14 @@ import os
 import uuid
 import math
 import logging
+import asyncio
 import bcrypt
+import httpx
 import jwt
 from datetime import datetime, timezone, timedelta
-from typing import List, Optional, Literal
+from typing import List, Optional, Literal, Any, Dict
 
-from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request
+from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -186,6 +188,94 @@ class BoostIn(BaseModel):
     plan: Literal["24h", "48h"]
 
 
+class PushTokenIn(BaseModel):
+    token: str
+    platform: Optional[str] = None  # ios / android / web
+
+
+class NotifSettingsIn(BaseModel):
+    enabled: bool
+
+
+# ============ PUSH NOTIFICATIONS (Expo free service) ============
+
+EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
+
+
+async def _send_expo_push(messages: List[Dict[str, Any]]):
+    """POST to Expo push API. Never raises — logs on failure."""
+    if not messages:
+        return
+    try:
+        async with httpx.AsyncClient(timeout=10.0) as c:
+            r = await c.post(
+                EXPO_PUSH_URL,
+                json=messages,
+                headers={
+                    "accept": "application/json",
+                    "accept-encoding": "gzip, deflate",
+                    "content-type": "application/json",
+                },
+            )
+            if r.status_code >= 400:
+                logging.warning(f"Expo push failed {r.status_code}: {r.text[:200]}")
+            else:
+                # Cleanup: remove invalid tokens reported by Expo
+                try:
+                    data = r.json().get("data") or []
+                    for idx, item in enumerate(data):
+                        if (
+                            isinstance(item, dict)
+                            and item.get("status") == "error"
+                            and item.get("details", {}).get("error")
+                            == "DeviceNotRegistered"
+                        ):
+                            bad_token = messages[idx].get("to")
+                            if bad_token:
+                                await db.users.update_many(
+                                    {"push_token": bad_token},
+                                    {"$set": {"push_token": None}},
+                                )
+                except Exception:
+                    pass
+    except Exception as e:
+        logging.warning(f"Expo push exception: {e}")
+
+
+async def notify_user(
+    user_id: str,
+    title: str,
+    body: str,
+    data: Optional[Dict[str, Any]] = None,
+):
+    """Queue a single push to a user (respects opt-in + valid Expo token)."""
+    if not user_id:
+        return
+    u = await db.users.find_one(
+        {"id": user_id}, {"_id": 0, "push_token": 1, "notifications_enabled": 1, "banned": 1}
+    )
+    if not u:
+        return
+    if u.get("banned"):
+        return
+    if u.get("notifications_enabled") is False:
+        return
+    token = u.get("push_token")
+    if not token or not isinstance(token, str) or not token.startswith("ExponentPushToken"):
+        return
+    msg = {
+        "to": token,
+        "sound": "default",
+        "title": title,
+        "body": body,
+        "data": data or {},
+        "channelId": "default",
+        "priority": "high",
+    }
+    # Fire-and-forget (non-blocking)
+    asyncio.create_task(_send_expo_push([msg]))
+
+
 # ============ AUTH ============
 
 @api_router.post("/auth/register")
@@ -252,6 +342,53 @@ async def update_profile(data: ProfileUpdateIn, user: dict = Depends(get_current
         await db.users.update_one({"id": user["id"]}, {"$set": update})
     fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
     return public_user(fresh)
+
+
+# ============ PUSH NOTIFICATIONS ENDPOINTS ============
+
+@api_router.post("/notifications/register-token")
+async def register_push_token(data: PushTokenIn, user: dict = Depends(get_current_user)):
+    token = (data.token or "").strip()
+    if not token:
+        raise HTTPException(status_code=400, detail="Token is required")
+    # Clear this token from any other account (user switched device/account)
+    await db.users.update_many(
+        {"push_token": token, "id": {"$ne": user["id"]}},
+        {"$set": {"push_token": None}},
+    )
+    update: Dict[str, Any] = {
+        "push_token": token,
+        "push_platform": data.platform or "",
+        "push_token_updated_at": datetime.now(timezone.utc),
+    }
+    # Default to enabled if not previously set
+    if user.get("notifications_enabled") is None:
+        update["notifications_enabled"] = True
+    await db.users.update_one({"id": user["id"]}, {"$set": update})
+    return {"ok": True}
+
+
+@api_router.post("/notifications/unregister-token")
+async def unregister_push_token(user: dict = Depends(get_current_user)):
+    await db.users.update_one({"id": user["id"]}, {"$set": {"push_token": None}})
+    return {"ok": True}
+
+
+@api_router.put("/notifications/settings")
+async def update_notif_settings(data: NotifSettingsIn, user: dict = Depends(get_current_user)):
+    await db.users.update_one(
+        {"id": user["id"]}, {"$set": {"notifications_enabled": bool(data.enabled)}}
+    )
+    return {"ok": True, "enabled": bool(data.enabled)}
+
+
+@api_router.get("/notifications/settings")
+async def get_notif_settings(user: dict = Depends(get_current_user)):
+    full = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return {
+        "enabled": full.get("notifications_enabled", True) if full else True,
+        "has_token": bool(full and full.get("push_token")),
+    }
 
 
 # ============ JOBS ============
@@ -421,6 +558,13 @@ async def accept_job(job_id: str, user: dict = Depends(get_current_user)):
 
     fresh = await db.jobs.find_one({"id": job_id}, {"_id": 0})
     poster = await db.users.find_one({"id": j["poster_id"]}, {"_id": 0})
+    # 🔔 Notify poster that their job was accepted
+    await notify_user(
+        j["poster_id"],
+        "🎉 Your job was accepted!",
+        f"{user.get('name') or 'Someone'} accepted \"{j['title']}\". Tap to chat.",
+        {"type": "job_accepted", "job_id": job_id, "conversation_id": convo_id},
+    )
     return public_job(fresh, poster=poster, worker=user)
 
 
@@ -443,6 +587,15 @@ async def complete_job(job_id: str, user: dict = Depends(get_current_user)):
     fresh = await db.jobs.find_one({"id": job_id}, {"_id": 0})
     poster = await db.users.find_one({"id": j["poster_id"]}, {"_id": 0})
     worker = await db.users.find_one({"id": j["worker_id"]}, {"_id": 0}) if j.get("worker_id") else None
+    # 🔔 Notify the other party that the job was marked complete
+    other_id = j.get("worker_id") if user["id"] == j["poster_id"] else j["poster_id"]
+    if other_id:
+        await notify_user(
+            other_id,
+            "✅ Job marked complete",
+            f"\"{j['title']}\" was marked complete. Leave a review!",
+            {"type": "job_completed", "job_id": job_id},
+        )
     return public_job(fresh, poster=poster, worker=worker)
 
 
@@ -456,6 +609,14 @@ async def cancel_job(job_id: str, user: dict = Depends(get_current_user)):
     if j["status"] == "completed":
         raise HTTPException(status_code=400, detail="Already completed")
     await db.jobs.update_one({"id": job_id}, {"$set": {"status": "cancelled"}})
+    # 🔔 Notify the worker if job was already accepted
+    if j.get("worker_id"):
+        await notify_user(
+            j["worker_id"],
+            "🚫 Job was cancelled",
+            f"The poster cancelled \"{j['title']}\".",
+            {"type": "job_cancelled", "job_id": job_id},
+        )
     return {"ok": True}
 
 
@@ -546,6 +707,17 @@ async def send_message(convo_id: str, data: MessageIn, user: dict = Depends(get_
     await db.conversations.update_one(
         {"id": convo_id}, {"$set": {"last_message_at": datetime.now(timezone.utc)}}
     )
+    # 🔔 Notify the other party of the new message
+    other_id = c["worker_id"] if c["poster_id"] == user["id"] else c["poster_id"]
+    preview = (data.text or "").strip()
+    if len(preview) > 120:
+        preview = preview[:117] + "..."
+    await notify_user(
+        other_id,
+        f"💬 {user.get('name') or 'New message'}",
+        preview or "Sent you a message",
+        {"type": "message", "conversation_id": convo_id},
+    )
     return {
         "id": msg["id"],
         "conversation_id": convo_id,
@@ -597,6 +769,14 @@ async def create_review(data: ReviewIn, user: dict = Depends(get_current_user)):
     await db.users.update_one(
         {"id": data.reviewee_id},
         {"$set": {"rating_avg": avg, "rating_count": count}},
+    )
+    # 🔔 Notify reviewee of the new review
+    stars = "⭐" * int(data.rating)
+    await notify_user(
+        data.reviewee_id,
+        f"{stars} New {data.rating}-star review",
+        f"{user.get('name') or 'Someone'} left you a review",
+        {"type": "review", "job_id": data.job_id, "user_id": data.reviewee_id},
     )
     return {"id": review["id"], "ok": True}
 

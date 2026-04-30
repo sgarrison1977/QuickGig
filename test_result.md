@@ -101,3 +101,192 @@
 #====================================================================================================
 # Testing Data - Main Agent and testing sub agent both should log testing data below this section
 #====================================================================================================
+
+user_problem_statement: |
+  Add free push notifications to QuickGig using Expo Push Notifications (no Firebase,
+  no paid services). Events that should trigger a push:
+    1. Worker accepts a job → notify poster
+    2. New message in a conversation → notify the other party
+    3. Job marked complete → notify the other party
+    4. Job cancelled by poster (after being accepted) → notify the worker
+    5. New review received → notify the reviewee
+  Users should be able to toggle pushes on/off from their Profile screen.
+  Tokens must be registered per-user on login/signup and cleared on logout.
+
+backend:
+  - task: "Push notification endpoints (register/unregister/settings)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Added endpoints:
+              POST /api/notifications/register-token   (body: {token, platform})
+              POST /api/notifications/unregister-token
+              GET  /api/notifications/settings
+              PUT  /api/notifications/settings         (body: {enabled: bool})
+            All require JWT auth. Registering a token also clears that same token
+            from any other user (so the same device can only belong to one account
+            at a time). Defaults `notifications_enabled` to true on first register.
+        - working: true
+          agent: "testing"
+          comment: |
+            VERIFIED — all 12 endpoint behaviour checks pass against the live
+            backend at https://task-connect-81.preview.emergentagent.com/api.
+              ✅ Unauthenticated POST /notifications/register-token → 401
+              ✅ Empty / whitespace-only token → 400 ("Token is required")
+              ✅ Valid token register → {"ok": true} (response in ~140ms)
+              ✅ GET /notifications/settings after register → {"enabled": true, "has_token": true}
+              ✅ PUT /notifications/settings {enabled:false} → {"ok": true, "enabled": false}
+              ✅ GET reflects enabled=false; PUT re-enable → enabled=true
+              ✅ POST /notifications/unregister-token → {"ok": true};
+                 GET shows has_token=false afterwards
+              ✅ Token uniqueness: registering FAKE_TOKEN_A on user B clears
+                 it from user A (A.has_token becomes false, B.has_token=true)
+              ✅ Settings persist across requests; toggle enabled=true after disable works
+            Tested with two freshly-registered real-looking accounts
+            (sarah.miller.* and david.chen.*).
+
+  - task: "Trigger pushes on core events (accept/message/complete/cancel/review)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Added `notify_user(user_id, title, body, data)` helper that sends
+            fire-and-forget requests to https://exp.host/--/api/v2/push/send using
+            httpx. Respects `notifications_enabled` flag and banned users. Hooked
+            into: POST /api/jobs/{id}/accept, POST /api/jobs/{id}/complete,
+            POST /api/jobs/{id}/cancel, POST /api/conversations/{id}/messages,
+            POST /api/reviews. Invalid tokens reported by Expo
+            (DeviceNotRegistered) are automatically cleared from the DB.
+            NOTE: Real push delivery can only be verified from a physical device
+            with a valid ExponentPushToken — but these endpoints must return 200
+            for any valid call and must NOT block the main API response even when
+            Expo is slow or offline.
+        - working: true
+          agent: "testing"
+          comment: |
+            VERIFIED — every notify_user-bearing endpoint returned 200 in well
+            under 250ms (asyncio.create_task fire-and-forget never blocks).
+            End-to-end flow exercised with FAKE Expo tokens
+            ("ExponentPushToken[fake-...]" registered to both users):
+              ✅ POST /api/jobs                              200 in ~130ms
+              ✅ POST /api/jobs/{id}/accept     (notify A)   200 in ~190ms
+              ✅ POST /api/conversations/{id}/messages A→B   200 in ~110ms
+              ✅ POST /api/conversations/{id}/messages B→A   200 in ~170ms
+              ✅ POST /api/jobs/{id}/complete   (notify B)   200 in ~140ms
+              ✅ POST /api/reviews              A→B & B→A    200 in ~150ms
+              ✅ POST /api/jobs/{id}/cancel     (notify W)   200 in ~140ms
+            Edge cases:
+              ✅ Sending message when receiver has notifications_enabled=false
+                 → still 200 fast (notify_user short-circuits silently)
+              ✅ Sending message when receiver has NO push_token at all
+                 → still 200 fast
+            All response times remain <3s threshold; no exceptions logged in
+            backend.err.log; no 5xx observed. Real Expo delivery cannot be
+            verified server-side and was not in scope.
+
+frontend:
+  - task: "Expo push registration + settings toggle"
+    implemented: true
+    working: "NA"
+    file: "/app/frontend/src/notifications.ts, /app/frontend/app/(tabs)/profile.tsx, /app/frontend/src/auth.tsx, /app/frontend/app/_layout.tsx"
+    stuck_count: 0
+    priority: "medium"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Created /app/frontend/src/notifications.ts which handles permission
+            request, channel setup (Android), token retrieval, and backend
+            registration. Hooked into auth signIn/signUp/refresh and into signOut.
+            Added a tap handler in /app/frontend/app/_layout.tsx that routes taps
+            to the relevant screen (chat / job / profile). Added a Switch card in
+            Profile that calls /api/notifications/settings to enable or disable
+            pushes. Frontend testing not requested — will be verified manually on
+            a real device by the user.
+
+metadata:
+  created_by: "main_agent"
+  version: "1.1"
+  test_sequence: 1
+  run_ui: false
+
+test_plan:
+  current_focus: []
+  stuck_tasks: []
+  test_all: false
+  test_priority: "high_first"
+
+agent_communication:
+    - agent: "testing"
+      message: |
+        Backend push-notification testing complete — 27/27 push-related tests
+        PASS against the live backend.
+          • All four /api/notifications/* endpoints behave correctly: auth
+            enforced (401), empty/whitespace tokens rejected (400), settings
+            persist, unregister clears token, same token cannot belong to two
+            users simultaneously (uniqueness preserved).
+          • Every notify_user-bearing flow (accept / message / complete /
+            cancel / review) returns 200 in <250ms — the asyncio.create_task
+            fire-and-forget pattern works as designed; no blocking observed
+            even when receiver has fake token, no token, or notifications
+            disabled.
+          • Backend logs show "POST https://exp.host/--/api/v2/push/send 200"
+            so the Expo call itself works (response is just an Expo error for
+            the fake token, which is expected and correctly ignored).
+          • Real device push delivery NOT verified — out of scope server-side.
+        UNRELATED ISSUE FLAGGED: admin@quickgig.app / admin123 returned 401.
+        This is unrelated to the push-notif task — admin password appears to
+        have been changed in a prior session (test_credentials.md notes this
+        and gives a reset procedure). No action required for current scope.
+
+    - agent: "main"
+      message: |
+        Added push notification support using free Expo Push service. Please test:
+
+        1. AUTH + TOKEN REGISTRATION
+           - Log in as a regular user (see /app/memory/test_credentials.md)
+           - Call POST /api/notifications/register-token with a FAKE but well-formed
+             token "ExponentPushToken[test-xxxx]" — should return {"ok": true}
+           - Call GET /api/notifications/settings — expect {"enabled": true, "has_token": true}
+           - Call PUT /api/notifications/settings with {"enabled": false} — expect
+             {"ok": true, "enabled": false}
+           - Call POST /api/notifications/unregister-token — expect {"ok": true}
+             and has_token should then be false on subsequent GET.
+
+        2. EVENT TRIGGERS (functional, no real push needed)
+           All the following must return 200 and NOT hang or error out even when
+           the receiving user has a fake / missing / invalid Expo token:
+             a. Two users (A and B). A creates a job; B accepts it.
+                → POST /api/jobs/{id}/accept should still succeed.
+             b. Either party sends a message in the conversation.
+                → POST /api/conversations/{id}/messages should still succeed.
+             c. Mark the job completed.
+                → POST /api/jobs/{id}/complete should still succeed.
+             d. Create a review for the other party.
+                → POST /api/reviews should still succeed.
+             e. Poster creates a new job, worker accepts, poster cancels.
+                → POST /api/jobs/{id}/cancel should still succeed.
+
+        3. EDGE CASES
+           - Unauthenticated request to /api/notifications/register-token should
+             return 401.
+           - Empty token should return 400.
+           - Toggling settings must persist across requests.
+
+        Do NOT test real push delivery — that requires a physical device. Focus
+        purely on endpoint behaviour, auth, and that events do not break when
+        notify_user() is called.

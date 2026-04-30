@@ -58,6 +58,12 @@
         {
           "photosPermission": "QuickGig needs photo access for job photos and ID verification."
         }
+      ],
+      [
+        "expo-notifications",
+        {
+          "color": "#FF6B6B"
+        }
       ]
     ],
     "experiments": {

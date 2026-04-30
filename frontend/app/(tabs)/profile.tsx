@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -7,15 +7,17 @@ import {
   TouchableOpacity,
   Image,
   RefreshControl,
+  Switch,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { ShieldCheck, Star, LogOut, ShieldAlert, Briefcase, CheckSquare, Crown } from "lucide-react-native";
+import { ShieldCheck, Star, LogOut, ShieldAlert, Briefcase, CheckSquare, Crown, Bell } from "lucide-react-native";
 import { useAuth } from "../../src/auth";
 import { api } from "../../src/api";
 import { colors, brutal, shadows } from "../../src/theme";
 import { JobCard } from "./browse";
+import { getNotifSettings, setNotifEnabled, registerForPushNotifications } from "../../src/notifications";
 
 export default function Profile() {
   const router = useRouter();
@@ -24,6 +26,29 @@ export default function Profile() {
   const [posted, setPosted] = useState<any[]>([]);
   const [accepted, setAccepted] = useState<any[]>([]);
   const [refreshing, setRefreshing] = useState(false);
+  const [notifEnabled, setNotifEnabledState] = useState<boolean>(true);
+  const [notifHasToken, setNotifHasToken] = useState<boolean>(false);
+
+  useEffect(() => {
+    (async () => {
+      const s = await getNotifSettings();
+      setNotifEnabledState(!!s.enabled);
+      setNotifHasToken(!!s.has_token);
+    })();
+  }, []);
+
+  const onToggleNotif = async (v: boolean) => {
+    setNotifEnabledState(v); // optimistic
+    try {
+      await setNotifEnabled(v);
+      if (v) {
+        const t = await registerForPushNotifications();
+        setNotifHasToken(!!t);
+      }
+    } catch {
+      setNotifEnabledState(!v); // revert on failure
+    }
+  };
 
   const load = useCallback(async () => {
     try {
@@ -169,6 +194,30 @@ export default function Profile() {
           </TouchableOpacity>
         </View>
 
+        {/* Notifications toggle */}
+        <View style={styles.notifRow} testID="notif-row">
+          <View style={styles.notifIcon}>
+            <Bell size={18} color={colors.primary} strokeWidth={2.6} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.notifTitle}>Push notifications</Text>
+            <Text style={styles.notifSub} numberOfLines={2}>
+              {notifEnabled
+                ? notifHasToken
+                  ? "You'll be notified about messages & job updates"
+                  : "Enable on your device to start receiving alerts"
+                : "You won't be notified about new activity"}
+            </Text>
+          </View>
+          <Switch
+            testID="notif-toggle"
+            value={notifEnabled}
+            onValueChange={onToggleNotif}
+            trackColor={{ false: "#E5E5EA", true: colors.primary }}
+            thumbColor="#fff"
+          />
+        </View>
+
         <View style={styles.tabs}>
           <TouchableOpacity
             testID="tab-posted"
@@ -279,4 +328,23 @@ const styles = StyleSheet.create({
   upgradeInner: { padding: 16, gap: 4, minHeight: 96, justifyContent: "center" },
   upgradeTitle: { fontSize: 16, fontWeight: "800", color: "#fff", letterSpacing: -0.3, marginTop: 4 },
   upgradeSub: { fontSize: 12, fontWeight: "600", color: "rgba(255,255,255,0.85)" },
+  notifRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    backgroundColor: "#fff",
+    borderRadius: 16,
+    padding: 14,
+    ...(shadows.soft as object),
+  },
+  notifIcon: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    backgroundColor: "#FFF1F1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  notifTitle: { fontSize: 15, fontWeight: "800", color: colors.text, letterSpacing: -0.2 },
+  notifSub: { fontSize: 12, color: colors.textSecondary, marginTop: 2, fontWeight: "500" },
 });

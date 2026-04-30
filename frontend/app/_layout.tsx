@@ -1,8 +1,43 @@
-import { Stack } from "expo-router";
+import { useEffect, useRef } from "react";
+import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
+import * as Notifications from "expo-notifications";
 import { AuthProvider } from "../src/auth";
+import { routeForNotification } from "../src/notifications";
+
+function NotificationRouter() {
+  const handledIds = useRef<Set<string>>(new Set());
+
+  useEffect(() => {
+    // Handle notification taps (app was open or backgrounded)
+    const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
+      try {
+        const data = resp?.notification?.request?.content?.data;
+        const path = routeForNotification(data);
+        if (path) router.push(path as any);
+      } catch {}
+    });
+
+    // If the app was launched from a killed state by tapping a push, route on mount
+    (async () => {
+      try {
+        const last = await Notifications.getLastNotificationResponseAsync();
+        const id = last?.notification?.request?.identifier;
+        if (last && id && !handledIds.current.has(id)) {
+          handledIds.current.add(id);
+          const data = last?.notification?.request?.content?.data;
+          const path = routeForNotification(data);
+          if (path) setTimeout(() => router.push(path as any), 500);
+        }
+      } catch {}
+    })();
+
+    return () => sub.remove();
+  }, []);
+  return null;
+}
 
 export default function RootLayout() {
   return (
@@ -10,6 +45,7 @@ export default function RootLayout() {
       <SafeAreaProvider>
         <AuthProvider>
           <StatusBar style="dark" />
+          <NotificationRouter />
           <Stack screenOptions={{ headerShown: false, contentStyle: { backgroundColor: "#FDFBF7" } }}>
             <Stack.Screen name="index" />
             <Stack.Screen name="(auth)" />

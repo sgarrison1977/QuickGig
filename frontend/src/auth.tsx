@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from "react";
 import { api, getToken, setToken } from "./api";
+import { registerForPushNotifications, unregisterPushToken } from "./notifications";
 
 export type User = {
   id: string;
@@ -43,6 +44,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     try {
       const me = await api<User>("/auth/me");
       setUserState(me);
+      // Kick off push registration once we have a user (non-blocking)
+      registerForPushNotifications().catch(() => {});
     } catch {
       await setToken(null);
       setUserState(null);
@@ -61,6 +64,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     await setToken(res.token);
     setUserState(res.user);
+    registerForPushNotifications().catch(() => {});
     return res.user;
   };
 
@@ -72,10 +76,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     });
     await setToken(res.token);
     setUserState(res.user);
+    registerForPushNotifications().catch(() => {});
     return res.user;
   };
 
   const signOut = async () => {
+    await unregisterPushToken().catch(() => {});
     await setToken(null);
     setUserState(null);
   };
