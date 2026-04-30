@@ -33,6 +33,7 @@ export default function PostJob() {
   const [address, setAddress] = useState("");
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [photos, setPhotos] = useState<string[]>([]);
+  const [boostPlan, setBoostPlan] = useState<null | "24h" | "48h">(null);
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
