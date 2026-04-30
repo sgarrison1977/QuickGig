@@ -11,7 +11,7 @@ import {
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
-import { ShieldCheck, Star, LogOut, ShieldAlert, Briefcase, CheckSquare } from "lucide-react-native";
+import { ShieldCheck, Star, LogOut, ShieldAlert, Briefcase, CheckSquare, Crown } from "lucide-react-native";
 import { useAuth } from "../../src/auth";
 import { api } from "../../src/api";
 import { colors, brutal, shadows } from "../../src/theme";
@@ -75,6 +75,18 @@ export default function Profile() {
             <View style={{ flex: 1 }}>
               <View style={styles.nameRow}>
                 <Text style={styles.name} numberOfLines={1}>{user.name}</Text>
+                {user.is_pro ? (
+                  <View style={[styles.ver, { backgroundColor: "#FFD93C" }]}>
+                    <Crown size={11} color={colors.text} strokeWidth={2.6} />
+                    <Text style={[styles.verText, { color: colors.text }]}>PRO</Text>
+                  </View>
+                ) : null}
+                {user.has_background_check ? (
+                  <View style={[styles.ver, { backgroundColor: colors.secondary }]}>
+                    <ShieldCheck size={11} color="#fff" strokeWidth={3} />
+                    <Text style={styles.verText}>BG✓</Text>
+                  </View>
+                ) : null}
                 {user.is_verified ? (
                   <View style={styles.ver}>
                     <ShieldCheck size={11} color="#fff" strokeWidth={3} />
@@ -118,6 +130,44 @@ export default function Profile() {
             <Text style={brutal.buttonText}>Verify Your ID</Text>
           </TouchableOpacity>
         ) : null}
+
+        {/* Upgrade CTAs - always visible & prominent */}
+        <View style={styles.upgradeRow}>
+          <TouchableOpacity
+            testID="go-pro-cta"
+            style={styles.upgradeCard}
+            onPress={() => router.push("/upgrade?focus=pro")}
+            activeOpacity={0.88}
+          >
+            <LinearGradient
+              colors={user.is_pro ? ["#FFD93C", "#FF9F1C"] : ["#7C5CFF", "#FF5A5F"]}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+              style={styles.upgradeInner}
+            >
+              <Crown size={22} color="#fff" strokeWidth={2.4} />
+              <Text style={styles.upgradeTitle}>{user.is_pro ? "Pro Active" : "Go Pro"}</Text>
+              <Text style={styles.upgradeSub}>{user.is_pro ? "Manage plan" : "$4.99/mo"}</Text>
+            </LinearGradient>
+          </TouchableOpacity>
+
+          <TouchableOpacity
+            testID="bg-check-cta"
+            style={styles.upgradeCard}
+            onPress={() => router.push("/upgrade?focus=bg")}
+            activeOpacity={0.88}
+          >
+            <View style={[styles.upgradeInner, { backgroundColor: user.has_background_check ? colors.secondary : colors.text }]}>
+              <ShieldCheck size={22} color="#fff" strokeWidth={2.4} />
+              <Text style={styles.upgradeTitle}>
+                {user.has_background_check ? "Bg Checked" : "Bg Check"}
+              </Text>
+              <Text style={styles.upgradeSub}>
+                {user.has_background_check ? "Active" : "$10 once"}
+              </Text>
+            </View>
+          </TouchableOpacity>
+        </View>
 
         <View style={styles.tabs}>
           <TouchableOpacity
@@ -224,4 +274,9 @@ const styles = StyleSheet.create({
   empty: { padding: 24, alignItems: "center" },
   emptyTitle: { fontSize: 19, fontWeight: "800", color: colors.text },
   emptyDesc: { color: colors.textSecondary, fontWeight: "500", textAlign: "center", marginTop: 6 },
+  upgradeRow: { flexDirection: "row", gap: 10 },
+  upgradeCard: { flex: 1, borderRadius: 18, overflow: "hidden" },
+  upgradeInner: { padding: 16, gap: 4, minHeight: 96, justifyContent: "center" },
+  upgradeTitle: { fontSize: 16, fontWeight: "800", color: "#fff", letterSpacing: -0.3, marginTop: 4 },
+  upgradeSub: { fontSize: 12, fontWeight: "600", color: "rgba(255,255,255,0.85)" },
 });

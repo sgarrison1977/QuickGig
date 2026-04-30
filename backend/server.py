@@ -85,6 +85,11 @@ def public_user(u: dict) -> dict:
         "rating_avg": u.get("rating_avg", 0.0),
         "rating_count": u.get("rating_count", 0),
         "jobs_completed": u.get("jobs_completed", 0),
+        "is_pro": bool(u.get("is_pro", False)) and (
+            u.get("pro_expires_at") is None or u.get("pro_expires_at") > datetime.now(timezone.utc)
+        ),
+        "pro_expires_at": u["pro_expires_at"].isoformat() if isinstance(u.get("pro_expires_at"), datetime) else None,
+        "has_background_check": u.get("has_background_check", False),
         "created_at": u.get("created_at").isoformat() if u.get("created_at") else None,
     }
 
@@ -170,6 +175,11 @@ class AdminPasswordChange(BaseModel):
     new_password: str = Field(min_length=6)
 
 
+class BoostIn(BaseModel):
+    job_id: str
+    plan: Literal["24h", "48h"]
+
+
 # ============ AUTH ============
 
 @api_router.post("/auth/register")
@@ -242,6 +252,8 @@ async def update_profile(data: ProfileUpdateIn, user: dict = Depends(get_current
 
 def public_job(j: dict, poster: Optional[dict] = None, worker: Optional[dict] = None,
                distance: Optional[float] = None) -> dict:
+    boosted_until = j.get("boosted_until")
+    is_boosted = bool(boosted_until and isinstance(boosted_until, datetime) and boosted_until > datetime.now(timezone.utc))
     return {
         "id": j["id"],
         "title": j["title"],
@@ -259,6 +271,8 @@ def public_job(j: dict, poster: Optional[dict] = None, worker: Optional[dict] = 
         "poster": public_user(poster) if poster else None,
         "worker": public_user(worker) if worker else None,
         "distance_miles": round(distance, 2) if distance is not None else None,
+        "is_boosted": is_boosted,
+        "boosted_until": boosted_until.isoformat() if isinstance(boosted_until, datetime) else None,
         "created_at": j["created_at"].isoformat() if isinstance(j.get("created_at"), datetime) else j.get("created_at"),
         "accepted_at": j["accepted_at"].isoformat() if isinstance(j.get("accepted_at"), datetime) else j.get("accepted_at"),
         "completed_at": j["completed_at"].isoformat() if isinstance(j.get("completed_at"), datetime) else j.get("completed_at"),
@@ -322,8 +336,12 @@ async def list_jobs(
                 continue
         poster = await db.users.find_one({"id": j["poster_id"]}, {"_id": 0})
         results.append(public_job(j, poster=poster, distance=dist))
-    if lat is not None and lng is not None:
-        results.sort(key=lambda x: x["distance_miles"] if x["distance_miles"] is not None else 1e9)
+    # Sort: boosted first, then by distance (if available) or recency
+    def sort_key(x):
+        boost_rank = 0 if x["is_boosted"] else 1
+        dist_rank = x["distance_miles"] if x["distance_miles"] is not None else 1e9
+        return (boost_rank, dist_rank)
+    results.sort(key=sort_key)
     return results
 
 
@@ -637,6 +655,76 @@ async def admin_change_password(data: AdminPasswordChange, admin: dict = Depends
         {"id": admin["id"]}, {"$set": {"password_hash": hash_password(data.new_password)}}
     )
     return {"ok": True}
+
+
+# ============ BILLING (MOCKED — wire real Stripe here when ready) ============
+
+PRO_PRICE_CENTS = 499       # $4.99/mo
+BG_CHECK_CENTS = 1000       # $10 one-time
+BOOST_24H_CENTS = 200       # $2
+BOOST_48H_CENTS = 500       # $5
+
+
+@api_router.get("/billing/catalog")
+async def billing_catalog():
+    return {
+        "pro_monthly": {"cents": PRO_PRICE_CENTS, "label": "$4.99 / month"},
+        "background_check": {"cents": BG_CHECK_CENTS, "label": "$10 one-time"},
+        "boost_24h": {"cents": BOOST_24H_CENTS, "label": "$2 • 24 hrs"},
+        "boost_48h": {"cents": BOOST_48H_CENTS, "label": "$5 • 48 hrs"},
+        "mocked": True,
+    }
+
+
+@api_router.post("/billing/subscribe-pro")
+async def subscribe_pro(user: dict = Depends(get_current_user)):
+    # MOCK: mark pro active for 30 days
+    expires = datetime.now(timezone.utc) + timedelta(days=30)
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"is_pro": True, "pro_expires_at": expires}},
+    )
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return public_user(fresh)
+
+
+@api_router.post("/billing/cancel-pro")
+async def cancel_pro(user: dict = Depends(get_current_user)):
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"is_pro": False, "pro_expires_at": None}},
+    )
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return public_user(fresh)
+
+
+@api_router.post("/billing/background-check")
+async def purchase_background_check(user: dict = Depends(get_current_user)):
+    # MOCK: instantly mark background-check complete
+    await db.users.update_one(
+        {"id": user["id"]},
+        {"$set": {"has_background_check": True}},
+    )
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return public_user(fresh)
+
+
+@api_router.post("/billing/boost-post")
+async def boost_post(data: BoostIn, user: dict = Depends(get_current_user)):
+    j = await db.jobs.find_one({"id": data.job_id}, {"_id": 0})
+    if not j:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if j["poster_id"] != user["id"]:
+        raise HTTPException(status_code=403, detail="Only the poster can boost")
+    hours = 24 if data.plan == "24h" else 48
+    existing = j.get("boosted_until")
+    now = datetime.now(timezone.utc)
+    base = existing if isinstance(existing, datetime) and existing > now else now
+    new_until = base + timedelta(hours=hours)
+    await db.jobs.update_one({"id": data.job_id}, {"$set": {"boosted_until": new_until}})
+    fresh = await db.jobs.find_one({"id": data.job_id}, {"_id": 0})
+    poster = await db.users.find_one({"id": fresh["poster_id"]}, {"_id": 0})
+    return public_job(fresh, poster=poster)
 
 
 # ============ SEED + STARTUP ============

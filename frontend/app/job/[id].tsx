@@ -126,7 +126,11 @@ export default function JobDetail() {
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <ScrollView contentContainerStyle={styles.container}>
-        <TouchableOpacity testID="back-btn" onPress={() => router.back()} style={styles.back}>
+        <TouchableOpacity
+          testID="back-btn"
+          onPress={() => (router.canGoBack() ? router.back() : router.replace("/(tabs)/browse"))}
+          style={styles.back}
+        >
           <ArrowLeft size={22} color="#000" strokeWidth={2.5} />
         </TouchableOpacity>
 

@@ -14,6 +14,9 @@ export type User = {
   rating_avg: number;
   rating_count: number;
   jobs_completed: number;
+  is_pro?: boolean;
+  pro_expires_at?: string | null;
+  has_background_check?: boolean;
   created_at?: string;
 };
 

@@ -295,6 +295,11 @@ export function JobCard({ job, onPress }: any) {
   const cat = categoryMeta(job.category);
   return (
     <TouchableOpacity testID={`job-card-${job.id}`} onPress={onPress} activeOpacity={0.9} style={styles.jobCard}>
+      {job.is_boosted ? (
+        <View style={styles.boostedRibbon}>
+          <Text style={styles.boostedRibbonText}>🚀  BOOSTED</Text>
+        </View>
+      ) : null}
       <View style={styles.cardHead}>
         <View style={[styles.catTag, { backgroundColor: cat.color }]}>
           <Text style={styles.catTagText}>
@@ -451,6 +456,15 @@ const styles = StyleSheet.create({
     gap: 8,
     ...(shadows.soft as object),
   },
+  boostedRibbon: {
+    alignSelf: "flex-start",
+    backgroundColor: colors.orange,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 999,
+    marginBottom: 2,
+  },
+  boostedRibbonText: { color: "#fff", fontWeight: "800", fontSize: 10, letterSpacing: 0.8 },
   cardHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   catTag: {
     borderRadius: 999,

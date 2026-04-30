@@ -118,7 +118,7 @@ export default function PostJob() {
     setLoading(true);
     setErr(null);
     try {
-      const job = await api("/jobs", {
+      const job: any = await api("/jobs", {
         method: "POST",
         body: {
           title: title.trim(),
@@ -132,7 +132,23 @@ export default function PostJob() {
           photos,
         },
       });
-      Alert.alert("Job posted!", "Your gig is now live.");
+      // Apply boost if selected (MOCKED payment)
+      if (boostPlan) {
+        try {
+          await api("/billing/boost-post", {
+            method: "POST",
+            body: { job_id: job.id, plan: boostPlan },
+          });
+        } catch (boostErr: any) {
+          Alert.alert("Posted but boost failed", boostErr.message);
+        }
+      }
+      Alert.alert(
+        "Job posted!",
+        boostPlan
+          ? `Your gig is now live and boosted for ${boostPlan === "24h" ? "24" : "48"} hours. (Demo — no real charge.)`
+          : "Your gig is now live."
+      );
       // reset
       setTitle("");
       setDescription("");
@@ -140,7 +156,8 @@ export default function PostJob() {
       setAddress("");
       setPhotos([]);
       setCoords(null);
-      router.replace(`/job/${job.id}`);
+      setBoostPlan(null);
+      router.push(`/job/${job.id}`);
     } catch (e: any) {
       setErr(e.message || "Failed to post");
     } finally {
@@ -270,6 +287,37 @@ export default function PostJob() {
 
           {err ? <Text style={styles.err} testID="post-error">{err}</Text> : null}
 
+          {/* Boost options */}
+          <Text style={brutal.caption}>Boost this post (optional)</Text>
+          <View style={styles.boostRow}>
+            <BoostOption
+              label="No boost"
+              price="Free"
+              active={boostPlan === null}
+              onPress={() => setBoostPlan(null)}
+              testID="boost-none"
+            />
+            <BoostOption
+              label="24 hrs"
+              price="$2"
+              hot
+              active={boostPlan === "24h"}
+              onPress={() => setBoostPlan("24h")}
+              testID="boost-24h"
+            />
+            <BoostOption
+              label="48 hrs"
+              price="$5"
+              hot
+              active={boostPlan === "48h"}
+              onPress={() => setBoostPlan("48h")}
+              testID="boost-48h"
+            />
+          </View>
+          <Text style={styles.boostNote}>
+            🚀 Boosted posts appear at the top of Browse with a glowing ribbon. (Demo — no real charge yet.)
+          </Text>
+
           <TouchableOpacity
             testID="post-submit"
             style={[brutal.buttonPrimary, loading && { opacity: 0.6 }]}
@@ -277,9 +325,13 @@ export default function PostJob() {
             disabled={loading}
           >
             {loading ? (
-              <ActivityIndicator color="#000" />
+              <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={brutal.buttonText}>Post Job</Text>
+              <Text style={brutal.buttonText}>
+                {boostPlan
+                  ? `Post Job + Boost (${boostPlan === "24h" ? "$2" : "$5"})`
+                  : "Post Job"}
+              </Text>
             )}
           </TouchableOpacity>
         </ScrollView>
@@ -289,8 +341,6 @@ export default function PostJob() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.bg },
-  container: { padding: 20, gap: 12, paddingBottom: 60 },
   tag: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.textSecondary, marginTop: 4 },
   title: { fontSize: 30, fontWeight: "900", color: "#000", letterSpacing: -1.5, marginBottom: 8 },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
@@ -368,4 +418,21 @@ const styles = StyleSheet.create({
   },
   h1: { fontSize: 26, fontWeight: "800", color: colors.text, letterSpacing: -0.6 },
   muted: { color: colors.textSecondary, fontWeight: "500", lineHeight: 22 },
+  boostRow: { flexDirection: "row", gap: 8 },
+  boostOpt: {
+    flex: 1,
+    borderRadius: 14,
+    paddingVertical: 12,
+    alignItems: "center",
+    backgroundColor: colors.surface,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+  },
+  boostOptActive: { borderColor: colors.primary, backgroundColor: colors.primarySoft },
+  boostOptHotActive: { borderColor: colors.orange, backgroundColor: "#FFE4D5" },
+  boostOptLabel: { fontWeight: "700", fontSize: 13, color: colors.textSecondary },
+  boostOptLabelActive: { color: colors.text },
+  boostOptPrice: { fontWeight: "800", fontSize: 15, color: colors.text, marginTop: 2, letterSpacing: -0.3 },
+  boostOptPriceActive: { color: colors.primary },
+  boostNote: { fontSize: 12, color: colors.textSecondary, fontWeight: "500", lineHeight: 18 },
 });
