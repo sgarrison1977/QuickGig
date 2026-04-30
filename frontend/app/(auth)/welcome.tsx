@@ -1,4 +1,5 @@
-import { View, Text, StyleSheet, TouchableOpacity, ScrollView } from "react-native";
+import { useRef } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, ScrollView, Pressable } from "react-native";
 import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
@@ -7,6 +8,17 @@ import { colors, brutal } from "../../src/theme";
 
 export default function Welcome() {
   const router = useRouter();
+  const tapTimes = useRef<number[]>([]);
+
+  const handleSecretTap = () => {
+    const now = Date.now();
+    // Keep only taps from last 3 seconds
+    tapTimes.current = [...tapTimes.current, now].filter((t) => now - t < 3000);
+    if (tapTimes.current.length >= 5) {
+      tapTimes.current = [];
+      router.push("/admin");
+    }
+  };
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
@@ -21,7 +33,9 @@ export default function Welcome() {
             <Sparkles size={12} color="#fff" strokeWidth={2.5} />
             <Text style={styles.heroBadgeText}>HUSTLE NEARBY</Text>
           </View>
-          <Text style={styles.logo}>QuickGig</Text>
+          <Pressable onPress={handleSecretTap} testID="secret-logo">
+            <Text style={styles.logo}>QuickGig</Text>
+          </Pressable>
           <Text style={styles.heroSubtitle}>
             Post small jobs. Earn fast cash. All in your neighborhood.
           </Text>
@@ -76,9 +90,6 @@ export default function Welcome() {
           </TouchableOpacity>
         </View>
 
-        <TouchableOpacity testID="admin-link" onPress={() => router.push("/admin")}>
-          <Text style={styles.adminLink}>Admin Login</Text>
-        </TouchableOpacity>
       </ScrollView>
     </SafeAreaView>
   );
