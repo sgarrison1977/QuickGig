@@ -16,7 +16,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
-import { MapPin, Camera, X, Plus, ShieldAlert, ShieldCheck, Search } from "lucide-react-native";
+import { MapPin, Camera, X, Plus, ShieldAlert, ShieldCheck } from "lucide-react-native";
 import { api, CATEGORIES } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, brutal } from "../../src/theme";
@@ -88,25 +88,8 @@ export default function PostJob() {
   };
 
   const lookupAddress = async () => {
-    if (!address.trim()) {
-      Alert.alert("Type an address first", "Enter the street, city, and state above, then tap Lookup.");
-      return;
-    }
-    try {
-      const results = await Location.geocodeAsync(address.trim());
-      if (results && results.length > 0) {
-        const r = results[0];
-        setCoords({ lat: r.latitude, lng: r.longitude });
-        Alert.alert("Address found ✓", `${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)}`);
-      } else {
-        Alert.alert(
-          "Couldn't find that address",
-          "Try a more complete address (e.g., '123 Main St, Springfield, IL') or use GPS."
-        );
-      }
-    } catch (e: any) {
-      Alert.alert("Lookup failed", e.message || "Try again or use GPS.");
-    }
+    // kept for compatibility; not used anymore — auto-geocoded on submit
+    return;
   };
 
   const addPhoto = async () => {
@@ -130,7 +113,26 @@ export default function PostJob() {
       return;
     }
     if (!coords) {
-      setErr("Please set the job location (tap 'Use my location' or geocode the address)");
+      // Auto-geocode the typed address silently before submitting
+      try {
+        const results = await Location.geocodeAsync(address.trim());
+        if (results && results.length > 0) {
+          setCoords({ lat: results[0].latitude, lng: results[0].longitude });
+        } else {
+          setErr("Could not find that address. Check spelling or use the GPS button.");
+          return;
+        }
+      } catch {
+        setErr("Could not look up that address. Check your connection or use GPS.");
+        return;
+      }
+    }
+    const finalCoords = coords || (await (async () => {
+      const r = await Location.geocodeAsync(address.trim());
+      return r[0] ? { lat: r[0].latitude, lng: r[0].longitude } : null;
+    })());
+    if (!finalCoords) {
+      setErr("Address could not be resolved. Try GPS or a more complete address.");
       return;
     }
     const amt = parseFloat(payAmount);
@@ -150,8 +152,8 @@ export default function PostJob() {
           pay_type: payType,
           pay_amount: amt,
           address: address.trim(),
-          latitude: coords.lat,
-          longitude: coords.lng,
+          latitude: finalCoords.lat,
+          longitude: finalCoords.lng,
           photos,
         },
       });
@@ -275,7 +277,6 @@ export default function PostJob() {
             value={address}
             onChangeText={(t) => {
               setAddress(t);
-              // typing a new address invalidates previous coords
               if (coords) setCoords(null);
             }}
             placeholder="123 Main St, Springfield, IL"
@@ -283,38 +284,20 @@ export default function PostJob() {
             placeholderTextColor={colors.textDisabled}
             multiline
           />
-          <View style={styles.locBtnRow}>
-            <TouchableOpacity
-              testID="use-my-location"
-              style={[styles.locBtn, coords && { backgroundColor: colors.secondarySoft, borderColor: colors.secondary }]}
-              onPress={useMyLocation}
-              activeOpacity={0.85}
-            >
-              <MapPin size={16} color={coords ? colors.secondary : colors.text} strokeWidth={2.4} />
-              <Text style={[styles.locBtnText, coords && { color: colors.secondary }]}>
-                {coords ? "GPS Location Set" : "Use My GPS"}
-              </Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              testID="lookup-address"
-              style={styles.locBtn}
-              onPress={lookupAddress}
-              activeOpacity={0.85}
-            >
-              <Search size={16} color={colors.text} strokeWidth={2.4} />
-              <Text style={styles.locBtnText}>Lookup Address</Text>
-            </TouchableOpacity>
-          </View>
-          {coords ? (
-            <Text style={styles.coordsText}>
-              📍 Pinned at {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
+          <Text style={styles.coordsHint}>
+            Type the full street address above, OR tap the GPS button if you&apos;re at the job site.
+          </Text>
+          <TouchableOpacity
+            testID="use-my-location"
+            style={[styles.gpsBtn, coords && styles.gpsBtnSet]}
+            onPress={useMyLocation}
+            activeOpacity={0.85}
+          >
+            <MapPin size={18} color={coords ? "#fff" : colors.text} strokeWidth={2.4} />
+            <Text style={[styles.gpsBtnText, coords && { color: "#fff" }]}>
+              {coords ? "GPS Location Set ✓" : "Use My GPS Location"}
             </Text>
-          ) : (
-            <Text style={styles.coordsHint}>
-              Type the address and tap <Text style={{ fontWeight: "800" }}>Lookup</Text>, or use{" "}
-              <Text style={{ fontWeight: "800" }}>GPS</Text> if you're at the job site.
-            </Text>
-          )}
+          </TouchableOpacity>
 
           <Text style={brutal.caption}>Photos (optional)</Text>
           <View style={styles.photoRow}>
