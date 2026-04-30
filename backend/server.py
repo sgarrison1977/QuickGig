@@ -35,6 +35,9 @@ JWT_ALGORITHM = "HS256"
 
 # ============ HELPERS ============
 
+USER_PROJECTION = {"_id": 0, "password_hash": 0, "id_document": 0}
+
+
 def hash_password(password: str) -> str:
     salt = bcrypt.gensalt()
     return bcrypt.hashpw(password.encode("utf-8"), salt).decode("utf-8")
@@ -344,7 +347,7 @@ async def list_jobs(
     poster_ids = list({j["poster_id"] for j, _ in filtered})
     posters_map = {}
     if poster_ids:
-        async for u in db.users.find({"id": {"$in": poster_ids}}, {"_id": 0}):
+        async for u in db.users.find({"id": {"$in": poster_ids}}, USER_PROJECTION):
             posters_map[u["id"]] = u
     results = [public_job(j, poster=posters_map.get(j["poster_id"]), distance=dist) for j, dist in filtered]
     # Sort: boosted first, then by distance (if available) or recency
@@ -366,7 +369,7 @@ async def my_jobs(user: dict = Depends(get_current_user)):
     other_ids = list(set(worker_ids + poster_ids))
     users_map = {}
     if other_ids:
-        async for u in db.users.find({"id": {"$in": other_ids}}, {"_id": 0}):
+        async for u in db.users.find({"id": {"$in": other_ids}}, USER_PROJECTION):
             users_map[u["id"]] = u
     out_posted = [
         public_job(j, poster=user, worker=users_map.get(j.get("worker_id")) if j.get("worker_id") else None)
@@ -472,7 +475,7 @@ async def list_conversations(user: dict = Depends(get_current_user)):
     convo_ids = [c["id"] for c in convos]
     users_map = {}
     if other_ids:
-        async for u in db.users.find({"id": {"$in": other_ids}}, {"_id": 0}):
+        async for u in db.users.find({"id": {"$in": other_ids}}, USER_PROJECTION):
             users_map[u["id"]] = u
     jobs_map = {}
     if job_ids:
@@ -580,13 +583,20 @@ async def create_review(data: ReviewIn, user: dict = Depends(get_current_user)):
         "created_at": datetime.now(timezone.utc),
     }
     await db.reviews.insert_one(review)
-    # Recalc reviewee rating avg
-    cursor = db.reviews.find({"reviewee_id": data.reviewee_id}, {"_id": 0})
-    all_reviews = await cursor.to_list(10000)
-    avg = sum(r["rating"] for r in all_reviews) / len(all_reviews) if all_reviews else 0
+    # Recalc reviewee rating avg via aggregation (efficient, bounded memory)
+    pipeline = [
+        {"$match": {"reviewee_id": data.reviewee_id}},
+        {"$group": {"_id": None, "avg": {"$avg": "$rating"}, "count": {"$sum": 1}}},
+    ]
+    agg = await db.reviews.aggregate(pipeline).to_list(1)
+    if agg:
+        avg = round(agg[0].get("avg") or 0, 2)
+        count = agg[0].get("count") or 0
+    else:
+        avg, count = 0, 0
     await db.users.update_one(
         {"id": data.reviewee_id},
-        {"$set": {"rating_avg": round(avg, 2), "rating_count": len(all_reviews)}},
+        {"$set": {"rating_avg": avg, "rating_count": count}},
     )
     return {"id": review["id"], "ok": True}
 
@@ -599,7 +609,7 @@ async def get_user_reviews(user_id: str):
         return []
     reviewer_ids = list({r["reviewer_id"] for r in reviews})
     reviewers_map = {}
-    async for u in db.users.find({"id": {"$in": reviewer_ids}}, {"_id": 0}):
+    async for u in db.users.find({"id": {"$in": reviewer_ids}}, USER_PROJECTION):
         reviewers_map[u["id"]] = u
     out = []
     for r in reviews:
@@ -667,7 +677,7 @@ async def admin_list_conversations(admin: dict = Depends(get_admin_user)):
     job_ids = list({c["job_id"] for c in convos})
     users_map = {}
     if user_ids:
-        async for u in db.users.find({"id": {"$in": user_ids}}, {"_id": 0}):
+        async for u in db.users.find({"id": {"$in": user_ids}}, USER_PROJECTION):
             users_map[u["id"]] = u
     jobs_map = {}
     if job_ids:
