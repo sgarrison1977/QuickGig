@@ -332,15 +332,21 @@ async def list_jobs(
         ]
     cursor = db.jobs.find(query, {"_id": 0}).sort("created_at", -1).limit(200)
     jobs = await cursor.to_list(200)
-    results = []
+    # Pre-filter by distance and collect poster_ids
+    filtered: list = []
     for j in jobs:
         dist = None
         if lat is not None and lng is not None:
             dist = haversine_miles(lat, lng, j["latitude"], j["longitude"])
             if radius is not None and dist > radius:
                 continue
-        poster = await db.users.find_one({"id": j["poster_id"]}, {"_id": 0})
-        results.append(public_job(j, poster=poster, distance=dist))
+        filtered.append((j, dist))
+    poster_ids = list({j["poster_id"] for j, _ in filtered})
+    posters_map = {}
+    if poster_ids:
+        async for u in db.users.find({"id": {"$in": poster_ids}}, {"_id": 0}):
+            posters_map[u["id"]] = u
+    results = [public_job(j, poster=posters_map.get(j["poster_id"]), distance=dist) for j, dist in filtered]
     # Sort: boosted first, then by distance (if available) or recency
     def sort_key(x):
         boost_rank = 0 if x["is_boosted"] else 1
@@ -354,14 +360,21 @@ async def list_jobs(
 async def my_jobs(user: dict = Depends(get_current_user)):
     posted = await db.jobs.find({"poster_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
     accepted = await db.jobs.find({"worker_id": user["id"]}, {"_id": 0}).sort("created_at", -1).to_list(200)
-    out_posted = []
-    for j in posted:
-        worker = await db.users.find_one({"id": j["worker_id"]}, {"_id": 0}) if j.get("worker_id") else None
-        out_posted.append(public_job(j, poster=user, worker=worker))
-    out_accepted = []
-    for j in accepted:
-        poster = await db.users.find_one({"id": j["poster_id"]}, {"_id": 0})
-        out_accepted.append(public_job(j, poster=poster, worker=user))
+    # Batch fetch related users
+    worker_ids = list({j["worker_id"] for j in posted if j.get("worker_id")})
+    poster_ids = list({j["poster_id"] for j in accepted})
+    other_ids = list(set(worker_ids + poster_ids))
+    users_map = {}
+    if other_ids:
+        async for u in db.users.find({"id": {"$in": other_ids}}, {"_id": 0}):
+            users_map[u["id"]] = u
+    out_posted = [
+        public_job(j, poster=user, worker=users_map.get(j.get("worker_id")) if j.get("worker_id") else None)
+        for j in posted
+    ]
+    out_accepted = [
+        public_job(j, poster=users_map.get(j["poster_id"]), worker=user) for j in accepted
+    ]
     return {"posted": out_posted, "accepted": out_accepted}
 
 
@@ -452,20 +465,40 @@ async def list_conversations(user: dict = Depends(get_current_user)):
         {"_id": 0},
     ).sort("last_message_at", -1)
     convos = await cursor.to_list(200)
+    if not convos:
+        return []
+    other_ids = list({(c["worker_id"] if c["poster_id"] == user["id"] else c["poster_id"]) for c in convos})
+    job_ids = list({c["job_id"] for c in convos})
+    convo_ids = [c["id"] for c in convos]
+    users_map = {}
+    if other_ids:
+        async for u in db.users.find({"id": {"$in": other_ids}}, {"_id": 0}):
+            users_map[u["id"]] = u
+    jobs_map = {}
+    if job_ids:
+        async for j in db.jobs.find({"id": {"$in": job_ids}}, {"_id": 0}):
+            jobs_map[j["id"]] = j
+    # Last messages via aggregation
+    last_msgs_map = {}
+    if convo_ids:
+        pipeline = [
+            {"$match": {"conversation_id": {"$in": convo_ids}}},
+            {"$sort": {"created_at": -1}},
+            {"$group": {"_id": "$conversation_id", "text": {"$first": "$text"}}},
+        ]
+        async for m in db.messages.aggregate(pipeline):
+            last_msgs_map[m["_id"]] = m.get("text", "")
     results = []
     for c in convos:
         other_id = c["worker_id"] if c["poster_id"] == user["id"] else c["poster_id"]
-        other = await db.users.find_one({"id": other_id}, {"_id": 0})
-        job = await db.jobs.find_one({"id": c["job_id"]}, {"_id": 0})
-        last_msg = await db.messages.find_one(
-            {"conversation_id": c["id"]}, {"_id": 0}, sort=[("created_at", -1)]
-        )
+        other = users_map.get(other_id)
+        job = jobs_map.get(c["job_id"])
         results.append({
             "id": c["id"],
             "job_id": c["job_id"],
             "job_title": job["title"] if job else "Job",
             "other_user": public_user(other) if other else None,
-            "last_message": last_msg["text"] if last_msg else "",
+            "last_message": last_msgs_map.get(c["id"], ""),
             "last_message_at": c["last_message_at"].isoformat() if c.get("last_message_at") else None,
         })
     return results
@@ -562,9 +595,15 @@ async def create_review(data: ReviewIn, user: dict = Depends(get_current_user)):
 async def get_user_reviews(user_id: str):
     cursor = db.reviews.find({"reviewee_id": user_id}, {"_id": 0}).sort("created_at", -1)
     reviews = await cursor.to_list(500)
+    if not reviews:
+        return []
+    reviewer_ids = list({r["reviewer_id"] for r in reviews})
+    reviewers_map = {}
+    async for u in db.users.find({"id": {"$in": reviewer_ids}}, {"_id": 0}):
+        reviewers_map[u["id"]] = u
     out = []
     for r in reviews:
-        reviewer = await db.users.find_one({"id": r["reviewer_id"]}, {"_id": 0})
+        reviewer = reviewers_map.get(r["reviewer_id"])
         out.append({
             "id": r["id"],
             "rating": r["rating"],
@@ -622,11 +661,23 @@ async def admin_unban_user(user_id: str, admin: dict = Depends(get_admin_user)):
 async def admin_list_conversations(admin: dict = Depends(get_admin_user)):
     cursor = db.conversations.find({}, {"_id": 0}).sort("last_message_at", -1)
     convos = await cursor.to_list(500)
+    if not convos:
+        return []
+    user_ids = list({c["poster_id"] for c in convos} | {c["worker_id"] for c in convos})
+    job_ids = list({c["job_id"] for c in convos})
+    users_map = {}
+    if user_ids:
+        async for u in db.users.find({"id": {"$in": user_ids}}, {"_id": 0}):
+            users_map[u["id"]] = u
+    jobs_map = {}
+    if job_ids:
+        async for j in db.jobs.find({"id": {"$in": job_ids}}, {"_id": 0}):
+            jobs_map[j["id"]] = j
     out = []
     for c in convos:
-        poster = await db.users.find_one({"id": c["poster_id"]}, {"_id": 0})
-        worker = await db.users.find_one({"id": c["worker_id"]}, {"_id": 0})
-        job = await db.jobs.find_one({"id": c["job_id"]}, {"_id": 0})
+        poster = users_map.get(c["poster_id"])
+        worker = users_map.get(c["worker_id"])
+        job = jobs_map.get(c["job_id"])
         out.append({
             "id": c["id"],
             "job_id": c["job_id"],
