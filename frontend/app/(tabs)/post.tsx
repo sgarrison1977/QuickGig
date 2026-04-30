@@ -340,7 +340,34 @@ export default function PostJob() {
   );
 }
 
+function BoostOption({ label, price, active, hot, onPress, testID }: any) {
+  return (
+    <TouchableOpacity
+      testID={testID}
+      onPress={onPress}
+      activeOpacity={0.88}
+      style={[
+        styles.boostOpt,
+        active && (hot ? styles.boostOptHotActive : styles.boostOptActive),
+      ]}
+    >
+      <Text style={[styles.boostOptLabel, active && styles.boostOptLabelActive]}>{label}</Text>
+      <Text
+        style={[
+          styles.boostOptPrice,
+          active && !hot && styles.boostOptPriceActive,
+          active && hot && { color: colors.orange },
+        ]}
+      >
+        {price}
+      </Text>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
+  safe: { flex: 1, backgroundColor: colors.bg },
+  container: { padding: 20, gap: 12, paddingBottom: 60 },
   tag: { fontSize: 12, fontWeight: "900", letterSpacing: 2, color: colors.textSecondary, marginTop: 4 },
   title: { fontSize: 30, fontWeight: "900", color: "#000", letterSpacing: -1.5, marginBottom: 8 },
   catGrid: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
