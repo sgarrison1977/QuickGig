@@ -36,18 +36,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUserState] = useState<User | null | undefined>(undefined);
 
   const refresh = useCallback(async () => {
-    const token = await getToken();
-    if (!token) {
-      setUserState(null);
-      return;
-    }
     try {
-      const me = await api<User>("/auth/me");
-      setUserState(me);
-      // Kick off push registration once we have a user (non-blocking)
-      registerForPushNotifications().catch(() => {});
+      const token = await getToken();
+      if (!token) {
+        setUserState(null);
+        return;
+      }
+      try {
+        const me = await api<User>("/auth/me");
+        setUserState(me);
+        // Kick off push registration once we have a user (non-blocking)
+        registerForPushNotifications().catch(() => {});
+      } catch {
+        await setToken(null).catch(() => {});
+        setUserState(null);
+      }
     } catch {
-      await setToken(null);
+      // Fail-safe: never leave the splash hanging on storage / network errors
       setUserState(null);
     }
   }, []);

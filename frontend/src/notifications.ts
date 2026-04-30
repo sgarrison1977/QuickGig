@@ -4,15 +4,23 @@ import * as Notifications from "expo-notifications";
 import * as Device from "expo-device";
 import { api } from "./api";
 
-// Show banner + play sound when a push arrives while the app is open
-Notifications.setNotificationHandler({
-  handleNotification: async () => ({
-    shouldShowBanner: true,
-    shouldShowList: true,
-    shouldPlaySound: true,
-    shouldSetBadge: false,
-  }),
-});
+// Show banner + play sound when a push arrives while the app is open.
+// Wrapped in try/catch + native-only because the web stub of expo-notifications
+// can occasionally throw at module-load time and break the entire web bundle.
+if (Platform.OS !== "web") {
+  try {
+    Notifications.setNotificationHandler({
+      handleNotification: async () => ({
+        shouldShowBanner: true,
+        shouldShowList: true,
+        shouldPlaySound: true,
+        shouldSetBadge: false,
+      }),
+    });
+  } catch {
+    // best-effort — never let a notification setup error block the app
+  }
+}
 
 let registeredToken: string | null = null;
 

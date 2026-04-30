@@ -11,14 +11,20 @@ function NotificationRouter() {
   const handledIds = useRef<Set<string>>(new Set());
 
   useEffect(() => {
-    // Handle notification taps (app was open or backgrounded)
-    const sub = Notifications.addNotificationResponseReceivedListener((resp) => {
-      try {
-        const data = resp?.notification?.request?.content?.data;
-        const path = routeForNotification(data);
-        if (path) router.push(path as any);
-      } catch {}
-    });
+    // Skip entirely on web — expo-notifications listeners are no-ops on web
+    // and have caused module-load issues with the static web bundle.
+    if (Platform.OS === "web") return;
+
+    let sub: any = null;
+    try {
+      sub = Notifications.addNotificationResponseReceivedListener((resp) => {
+        try {
+          const data = resp?.notification?.request?.content?.data;
+          const path = routeForNotification(data);
+          if (path) router.push(path as any);
+        } catch {}
+      });
+    } catch {}
 
     // If the app was launched from a killed state by tapping a push, route on mount
     (async () => {
@@ -34,7 +40,11 @@ function NotificationRouter() {
       } catch {}
     })();
 
-    return () => sub.remove();
+    return () => {
+      try {
+        sub?.remove?.();
+      } catch {}
+    };
   }, []);
   return null;
 }

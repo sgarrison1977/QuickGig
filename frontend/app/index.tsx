@@ -1,28 +1,24 @@
-import { useEffect } from "react";
 import { View, Text, ActivityIndicator, StyleSheet } from "react-native";
-import { useRouter } from "expo-router";
+import { Redirect } from "expo-router";
 import { useAuth } from "../src/auth";
 import { colors } from "../src/theme";
 
 export default function Index() {
   const { user } = useAuth();
-  const router = useRouter();
 
-  useEffect(() => {
-    if (user === undefined) return;
-    if (user) {
-      router.replace("/(tabs)/browse");
-    } else {
-      router.replace("/(auth)/welcome");
-    }
-  }, [user, router]);
+  if (user === undefined) {
+    return (
+      <View style={styles.container} testID="splash-screen">
+        <Text style={styles.logo}>
+          QUICK<Text style={{ color: colors.primary }}>GIG</Text>
+        </Text>
+        <ActivityIndicator color={colors.text} size="large" />
+      </View>
+    );
+  }
 
-  return (
-    <View style={styles.container} testID="splash-screen">
-      <Text style={styles.logo}>QUICK<Text style={{ color: colors.primary }}>GIG</Text></Text>
-      <ActivityIndicator color={colors.text} size="large" />
-    </View>
-  );
+  // Declarative redirect — works reliably on web + native
+  return user ? <Redirect href="/(tabs)/browse" /> : <Redirect href="/(auth)/welcome" />;
 }
 
 const styles = StyleSheet.create({
