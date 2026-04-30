@@ -178,6 +178,7 @@ export default function JobDetail() {
             testID="poster-card"
             style={[brutal.card, styles.userRow]}
             onPress={() => router.push(`/profile/${job.poster.id}`)}
+            activeOpacity={0.85}
           >
             <View style={styles.avatar}>
               <Text style={styles.avatarLetter}>{job.poster.name.charAt(0).toUpperCase()}</Text>
@@ -206,8 +207,9 @@ export default function JobDetail() {
 
         {job.worker ? (
           <TouchableOpacity
-            style={[brutal.card, styles.userRow, { backgroundColor: colors.secondary }]}
+            style={[brutal.card, styles.userRow, { backgroundColor: colors.secondarySoft }]}
             onPress={() => router.push(`/profile/${job.worker.id}`)}
+            activeOpacity={0.85}
           >
             <View style={[styles.avatar, { backgroundColor: "#fff" }]}>
               <Text style={styles.avatarLetter}>{job.worker.name.charAt(0).toUpperCase()}</Text>
@@ -297,62 +299,59 @@ const styles = StyleSheet.create({
   back: {
     width: 44,
     height: 44,
-    borderWidth: 2,
-    borderColor: "#000",
-    backgroundColor: "#fff",
+    borderRadius: 14,
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   catTag: {
     alignSelf: "flex-start",
-    borderWidth: 2,
-    borderColor: "#000",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     marginTop: 8,
   },
-  catTagText: { fontWeight: "900", fontSize: 12, color: "#000", textTransform: "uppercase" },
-  title: { fontSize: 30, fontWeight: "900", color: "#000", letterSpacing: -1.2, lineHeight: 34 },
+  catTagText: { fontWeight: "700", fontSize: 11, color: colors.text },
+  title: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.8, lineHeight: 32 },
   statusPill: {
     alignSelf: "flex-start",
-    borderWidth: 2,
-    borderColor: "#000",
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
   },
-  statusText: { fontWeight: "900", color: "#fff", fontSize: 11, letterSpacing: 1 },
+  statusText: { fontWeight: "800", color: "#fff", fontSize: 10, letterSpacing: 0.8 },
   photosRow: { gap: 8, paddingVertical: 4 },
-  photo: { width: 140, height: 100, borderWidth: 2, borderColor: "#000", marginRight: 8 },
-  payText: { fontSize: 36, fontWeight: "900", color: "#000", letterSpacing: -1, marginTop: 4 },
-  payUnit: { fontSize: 14, fontWeight: "700" },
-  note: { fontSize: 11, color: "#000", fontWeight: "600", marginTop: 4 },
-  desc: { fontSize: 15, color: "#000", lineHeight: 22, fontWeight: "500", marginTop: 6 },
+  photo: { width: 160, height: 110, borderRadius: 14, marginRight: 8 },
+  payText: { fontSize: 36, fontWeight: "800", color: colors.text, letterSpacing: -0.8, marginTop: 4 },
+  payUnit: { fontSize: 14, fontWeight: "600", color: colors.textSecondary },
+  note: { fontSize: 11, color: colors.textSecondary, fontWeight: "500", marginTop: 4 },
+  desc: { fontSize: 15, color: colors.text, lineHeight: 22, fontWeight: "500", marginTop: 6 },
   locRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 6 },
-  address: { fontWeight: "700", color: "#000", flex: 1 },
-  distance: { fontSize: 12, fontWeight: "600", color: colors.textSecondary, marginTop: 4 },
+  address: { fontWeight: "600", color: colors.text, flex: 1 },
+  distance: { fontSize: 12, fontWeight: "500", color: colors.textSecondary, marginTop: 4 },
   userRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: {
-    width: 50,
-    height: 50,
-    backgroundColor: colors.purple,
-    borderWidth: 2,
-    borderColor: "#000",
+    width: 48,
+    height: 48,
+    borderRadius: 24,
+    backgroundColor: colors.accentSoft,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarLetter: { fontSize: 22, fontWeight: "900", color: "#000" },
+  avatarLetter: { fontSize: 20, fontWeight: "800", color: colors.accent },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  userName: { fontSize: 16, fontWeight: "900", color: "#000" },
-  userMeta: { color: colors.textSecondary, fontWeight: "600", fontSize: 12 },
+  userName: { fontSize: 16, fontWeight: "700", color: colors.text },
+  userMeta: { color: colors.textSecondary, fontWeight: "500", fontSize: 12 },
   verBadge: {
     backgroundColor: colors.verified,
-    borderWidth: 1.5,
-    borderColor: "#000",
+    borderRadius: 8,
     width: 18,
     height: 18,
     alignItems: "center",
     justifyContent: "center",
   },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
-  ratingText: { fontWeight: "800", color: "#000" },
+  ratingText: { fontWeight: "700", color: colors.text },
 });

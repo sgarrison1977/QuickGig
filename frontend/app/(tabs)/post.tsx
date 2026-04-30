@@ -195,14 +195,14 @@ export default function PostJob() {
               style={[styles.payTypeBtn, payType === "fixed" && styles.payTypeBtnActive]}
               onPress={() => setPayType("fixed")}
             >
-              <Text style={[styles.payTypeText, payType === "fixed" && { color: "#000" }]}>Fixed</Text>
+              <Text style={[styles.payTypeText, payType === "fixed" && { color: "#fff" }]}>Fixed</Text>
             </TouchableOpacity>
             <TouchableOpacity
               testID="pay-hourly"
               style={[styles.payTypeBtn, payType === "hourly" && styles.payTypeBtnActive]}
               onPress={() => setPayType("hourly")}
             >
-              <Text style={[styles.payTypeText, payType === "hourly" && { color: "#000" }]}>Hourly</Text>
+              <Text style={[styles.payTypeText, payType === "hourly" && { color: "#fff" }]}>Hourly</Text>
             </TouchableOpacity>
           </View>
           <View style={styles.amountRow}>
@@ -287,40 +287,34 @@ const styles = StyleSheet.create({
   catCard: {
     width: "31%",
     aspectRatio: 1,
-    borderWidth: 2,
-    borderColor: "#000",
+    borderRadius: 16,
     alignItems: "center",
     justifyContent: "center",
     gap: 4,
+    opacity: 0.6,
   },
   catCardActive: {
-    shadowColor: "#000",
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 6,
-    transform: [{ translateX: -2 }, { translateY: -2 }],
+    opacity: 1,
+    transform: [{ scale: 1.04 }],
   },
-  catEmoji: { fontSize: 22 },
-  catLabel: { fontSize: 11, fontWeight: "900", color: "#000", textAlign: "center" },
-  payRow: { flexDirection: "row", gap: 8 },
+  catEmoji: { fontSize: 26 },
+  catLabel: { fontSize: 11, fontWeight: "700", color: colors.text, textAlign: "center" },
+  payRow: { flexDirection: "row", gap: 8, backgroundColor: colors.surfaceAlt, padding: 4, borderRadius: 14 },
   payTypeBtn: {
     flex: 1,
-    borderWidth: 2,
-    borderColor: "#000",
-    paddingVertical: 12,
+    borderRadius: 11,
+    paddingVertical: 11,
     alignItems: "center",
-    backgroundColor: "#fff",
   },
-  payTypeBtnActive: { backgroundColor: colors.yellow },
-  payTypeText: { fontWeight: "900", color: colors.textSecondary, textTransform: "uppercase" },
+  payTypeBtnActive: { backgroundColor: colors.text },
+  payTypeText: { fontWeight: "700", color: colors.textSecondary, fontSize: 13 },
   amountRow: { flexDirection: "row", alignItems: "center", gap: 8 },
-  dollar: { fontSize: 28, fontWeight: "900", color: "#000" },
-  unit: { fontWeight: "800", color: colors.textSecondary, fontSize: 14, textTransform: "uppercase" },
-  coordsText: { fontSize: 11, color: colors.textSecondary, fontWeight: "700" },
+  dollar: { fontSize: 28, fontWeight: "800", color: colors.text },
+  unit: { fontWeight: "700", color: colors.textSecondary, fontSize: 13 },
+  coordsText: { fontSize: 11, color: colors.textSecondary, fontWeight: "600" },
   photoRow: { flexDirection: "row", flexWrap: "wrap", gap: 8 },
-  photoItem: { width: 72, height: 72, position: "relative" },
-  photo: { width: 72, height: 72, borderWidth: 2, borderColor: "#000" },
+  photoItem: { width: 76, height: 76, position: "relative" },
+  photo: { width: 76, height: 76, borderRadius: 12 },
   photoRm: {
     position: "absolute",
     top: -6,
@@ -328,43 +322,38 @@ const styles = StyleSheet.create({
     width: 22,
     height: 22,
     backgroundColor: colors.error,
-    borderWidth: 2,
-    borderColor: "#000",
+    borderRadius: 11,
     alignItems: "center",
     justifyContent: "center",
   },
   photoAdd: {
-    width: 72,
-    height: 72,
-    borderWidth: 2,
-    borderColor: "#000",
-    backgroundColor: colors.alt,
+    width: 76,
+    height: 76,
+    borderRadius: 12,
+    backgroundColor: colors.surfaceAlt,
+    borderWidth: 1.5,
+    borderStyle: "dashed",
+    borderColor: "rgba(0,0,0,0.18)",
     alignItems: "center",
     justifyContent: "center",
   },
   err: {
-    color: "#fff",
-    backgroundColor: colors.error,
-    padding: 10,
-    borderWidth: 2,
-    borderColor: "#000",
-    fontWeight: "700",
+    color: colors.error,
+    backgroundColor: "#FEE2E2",
+    padding: 12,
+    borderRadius: 12,
+    fontWeight: "600",
+    fontSize: 13,
   },
   gateBox: { flex: 1, alignItems: "center", justifyContent: "center", padding: 32, gap: 16 },
   gateIcon: {
     width: 80,
     height: 80,
-    backgroundColor: colors.alt,
-    borderWidth: 2,
-    borderColor: "#000",
+    backgroundColor: colors.primarySoft,
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 6,
   },
-  h1: { fontSize: 28, fontWeight: "900", color: "#000" },
-  muted: { color: colors.textSecondary, fontWeight: "600", textAlign: "center" },
+  h1: { fontSize: 26, fontWeight: "800", color: colors.text },
+  muted: { color: colors.textSecondary, fontWeight: "500", textAlign: "center" },
 });

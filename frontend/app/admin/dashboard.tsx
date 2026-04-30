@@ -96,8 +96,9 @@ export default function AdminDashboard() {
             router.replace("/(auth)/welcome");
           }}
           style={styles.logoutBtn}
+          activeOpacity={0.85}
         >
-          <LogOut size={18} color="#fff" strokeWidth={2.5} />
+          <LogOut size={18} color="#fff" strokeWidth={2.4} />
         </TouchableOpacity>
       </View>
 
@@ -108,8 +109,9 @@ export default function AdminDashboard() {
             testID={`admin-tab-${t}`}
             onPress={() => setTab(t)}
             style={[styles.tab, tab === t && styles.tabActive]}
+            activeOpacity={0.85}
           >
-            <Text style={styles.tabText}>{t.toUpperCase()}</Text>
+            <Text style={[styles.tabText, tab === t && { color: "#fff" }]}>{t.toUpperCase()}</Text>
           </TouchableOpacity>
         ))}
       </View>
@@ -122,7 +124,7 @@ export default function AdminDashboard() {
           {tab === "users" ? (
             <View style={{ gap: 10 }}>
               {users.map((u) => (
-                <View key={u.id} style={[brutal.card, u.banned && { backgroundColor: "#FFE0E0" }]}>
+                <View key={u.id} style={[brutal.card, u.banned && { backgroundColor: "#FEE2E2" }]}>
                   <View style={styles.userRow}>
                     <View style={[styles.avatar, { backgroundColor: u.banned ? colors.error : colors.primary }]}>
                       <Text style={styles.avatarLetter}>{u.name?.charAt(0).toUpperCase() || "?"}</Text>
@@ -195,19 +197,19 @@ export default function AdminDashboard() {
 
 function StatsView({ stats }: { stats: any }) {
   const items = [
-    { label: "Total Users", value: stats.users, icon: Users, color: colors.primary },
-    { label: "Verified", value: stats.verified_users, icon: ShieldCheck, color: colors.secondary },
-    { label: "Banned", value: stats.banned_users, icon: Ban, color: colors.error },
-    { label: "Total Jobs", value: stats.jobs_total, icon: Briefcase, color: colors.yellow },
-    { label: "Open Jobs", value: stats.jobs_open, icon: Briefcase, color: colors.purple },
-    { label: "Completed", value: stats.jobs_completed, icon: Check, color: colors.success },
-    { label: "Messages", value: stats.messages, icon: MessageSquare, color: colors.orange },
+    { label: "Total Users", value: stats.users, icon: Users, color: colors.primarySoft },
+    { label: "Verified", value: stats.verified_users, icon: ShieldCheck, color: colors.secondarySoft },
+    { label: "Banned", value: stats.banned_users, icon: Ban, color: "#FEE2E2" },
+    { label: "Total Jobs", value: stats.jobs_total, icon: Briefcase, color: colors.yellowSoft },
+    { label: "Open Jobs", value: stats.jobs_open, icon: Briefcase, color: colors.accentSoft },
+    { label: "Completed", value: stats.jobs_completed, icon: Check, color: "#D6F5EE" },
+    { label: "Messages", value: stats.messages, icon: MessageSquare, color: "#FFE4D5" },
   ];
   return (
     <View style={styles.statsGrid}>
       {items.map((it) => (
         <View key={it.label} style={[styles.statCard, { backgroundColor: it.color }]}>
-          <it.icon size={22} color="#000" strokeWidth={2.5} />
+          <it.icon size={20} color={colors.text} strokeWidth={2.2} />
           <Text style={styles.statValue}>{it.value}</Text>
           <Text style={styles.statLabel}>{it.label}</Text>
         </View>
@@ -298,105 +300,93 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 14,
     gap: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: "#000",
-    backgroundColor: colors.error,
+    backgroundColor: colors.text,
   },
   back: {
     width: 40,
     height: 40,
-    borderWidth: 2,
-    borderColor: "#000",
-    backgroundColor: "#fff",
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
-  tag: { fontSize: 10, fontWeight: "900", letterSpacing: 2, color: "#fff" },
-  title: { fontSize: 22, fontWeight: "900", color: "#fff", letterSpacing: -0.5 },
+  tag: { fontSize: 10, fontWeight: "700", letterSpacing: 1.6, color: "rgba(255,255,255,0.6)" },
+  title: { fontSize: 22, fontWeight: "800", color: "#fff", letterSpacing: -0.4 },
   logoutBtn: {
     width: 40,
     height: 40,
-    borderWidth: 2,
-    borderColor: "#000",
-    backgroundColor: "#000",
+    borderRadius: 12,
+    backgroundColor: "rgba(255,255,255,0.1)",
     alignItems: "center",
     justifyContent: "center",
   },
-  tabs: { flexDirection: "row", padding: 12, gap: 6 },
+  tabs: { flexDirection: "row", padding: 12, gap: 6, backgroundColor: colors.surface },
   tab: {
     flex: 1,
     paddingVertical: 10,
-    backgroundColor: "#fff",
-    borderWidth: 2,
-    borderColor: "#000",
+    backgroundColor: colors.surfaceAlt,
+    borderRadius: 12,
     alignItems: "center",
   },
-  tabActive: { backgroundColor: colors.yellow },
-  tabText: { fontWeight: "900", color: "#000", fontSize: 11, letterSpacing: 0.5 },
+  tabActive: { backgroundColor: colors.primary },
+  tabText: { fontWeight: "700", color: colors.textSecondary, fontSize: 11, letterSpacing: 0.4 },
   body: { padding: 16, gap: 12, paddingBottom: 40 },
   statsGrid: { flexDirection: "row", flexWrap: "wrap", gap: 10 },
   statCard: {
     width: "48%",
-    borderWidth: 2,
-    borderColor: "#000",
-    padding: 14,
+    borderRadius: 18,
+    padding: 16,
     gap: 6,
-    shadowColor: "#000",
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 6,
   },
-  statValue: { fontSize: 32, fontWeight: "900", color: "#000", letterSpacing: -1 },
-  statLabel: { fontWeight: "800", color: "#000", fontSize: 11, textTransform: "uppercase" },
-  userRow: { flexDirection: "row", alignItems: "center", gap: 10 },
+  statValue: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
+  statLabel: { fontWeight: "700", color: colors.textSecondary, fontSize: 11, letterSpacing: 0.3 },
+  userRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: {
     width: 44,
     height: 44,
-    borderWidth: 2,
-    borderColor: "#000",
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
   },
-  avatarLetter: { fontSize: 18, fontWeight: "900", color: "#000" },
+  avatarLetter: { fontSize: 18, fontWeight: "800", color: "#fff" },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6, flexWrap: "wrap" },
-  userName: { fontSize: 16, fontWeight: "900", color: "#000" },
-  userEmail: { color: colors.textSecondary, fontWeight: "600", fontSize: 12 },
+  userName: { fontSize: 15, fontWeight: "700", color: colors.text },
+  userEmail: { color: colors.textSecondary, fontWeight: "500", fontSize: 12 },
   verBadge: {
     backgroundColor: colors.verified,
-    borderWidth: 1.5,
-    borderColor: "#000",
+    borderRadius: 8,
     width: 16,
     height: 16,
     alignItems: "center",
     justifyContent: "center",
   },
   adminBadge: {
-    backgroundColor: "#000",
+    backgroundColor: colors.text,
     color: "#fff",
     fontSize: 9,
-    fontWeight: "900",
-    paddingHorizontal: 5,
+    fontWeight: "800",
+    paddingHorizontal: 6,
     paddingVertical: 2,
-    letterSpacing: 0.5,
+    borderRadius: 5,
+    letterSpacing: 0.4,
+    overflow: "hidden",
   },
-  muted: { color: colors.textSecondary, fontWeight: "600", fontSize: 12, marginTop: 2 },
+  muted: { color: colors.textSecondary, fontWeight: "500", fontSize: 12, marginTop: 2 },
   banBtn: {
     backgroundColor: colors.error,
-    borderWidth: 2,
-    borderColor: "#000",
-    paddingHorizontal: 10,
-    paddingVertical: 6,
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
-  banText: { color: "#fff", fontWeight: "900", fontSize: 11 },
-  convoTitle: { fontWeight: "900", fontSize: 16, color: "#000" },
+  banText: { color: "#fff", fontWeight: "700", fontSize: 11 },
+  convoTitle: { fontWeight: "700", fontSize: 15, color: colors.text },
   viewRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
-  viewText: { fontWeight: "800", color: "#000", fontSize: 12 },
+  viewText: { fontWeight: "700", color: colors.primary, fontSize: 12 },
   settingsHead: { flexDirection: "row", alignItems: "center", gap: 8 },
-  h3: { fontSize: 18, fontWeight: "900", color: "#000" },
+  h3: { fontSize: 17, fontWeight: "800", color: colors.text },
 });

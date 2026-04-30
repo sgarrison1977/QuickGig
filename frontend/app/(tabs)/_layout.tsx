@@ -1,6 +1,6 @@
 import { Tabs } from "expo-router";
 import { View, StyleSheet, Platform } from "react-native";
-import { Search, PlusSquare, MessageCircle, User } from "lucide-react-native";
+import { Search, Plus, MessageCircle, User } from "lucide-react-native";
 import { colors } from "../../src/theme";
 
 export default function TabsLayout() {
@@ -8,38 +8,38 @@ export default function TabsLayout() {
     <Tabs
       screenOptions={{
         headerShown: false,
-        tabBarActiveTintColor: "#000",
-        tabBarInactiveTintColor: "#666",
+        tabBarActiveTintColor: colors.primary,
+        tabBarInactiveTintColor: colors.textDisabled,
         tabBarStyle: {
           backgroundColor: colors.surface,
-          borderTopWidth: 2,
-          borderTopColor: "#000",
-          height: Platform.OS === "ios" ? 86 : 64,
-          paddingTop: 6,
-          paddingBottom: Platform.OS === "ios" ? 28 : 8,
+          borderTopWidth: 0,
+          height: Platform.OS === "ios" ? 86 : 70,
+          paddingTop: 10,
+          paddingBottom: Platform.OS === "ios" ? 28 : 12,
+          elevation: 12,
+          shadowColor: "#0E1230",
+          shadowOffset: { width: 0, height: -4 },
+          shadowOpacity: 0.06,
+          shadowRadius: 16,
         },
-        tabBarLabelStyle: { fontSize: 11, fontWeight: "800", textTransform: "uppercase", letterSpacing: 0.5 },
+        tabBarLabelStyle: { fontSize: 11, fontWeight: "700", marginTop: 2 },
       }}
     >
       <Tabs.Screen
         name="browse"
         options={{
           title: "Browse",
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon focused={focused} color={color}>
-              <Search size={20} color={color} strokeWidth={2.5} />
-            </TabIcon>
-          ),
+          tabBarIcon: ({ color }) => <Search size={22} color={color} strokeWidth={2.4} />,
         }}
       />
       <Tabs.Screen
         name="post"
         options={{
           title: "Post",
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon focused={focused} color={color} highlight>
-              <PlusSquare size={22} color={color} strokeWidth={2.5} />
-            </TabIcon>
+          tabBarIcon: () => (
+            <View style={styles.postBtn}>
+              <Plus size={22} color="#fff" strokeWidth={3} />
+            </View>
           ),
         }}
       />
@@ -47,52 +47,33 @@ export default function TabsLayout() {
         name="messages"
         options={{
           title: "Inbox",
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon focused={focused} color={color}>
-              <MessageCircle size={20} color={color} strokeWidth={2.5} />
-            </TabIcon>
-          ),
+          tabBarIcon: ({ color }) => <MessageCircle size={22} color={color} strokeWidth={2.4} />,
         }}
       />
       <Tabs.Screen
         name="profile"
         options={{
           title: "Me",
-          tabBarIcon: ({ color, focused }) => (
-            <TabIcon focused={focused} color={color}>
-              <User size={20} color={color} strokeWidth={2.5} />
-            </TabIcon>
-          ),
+          tabBarIcon: ({ color }) => <User size={22} color={color} strokeWidth={2.4} />,
         }}
       />
     </Tabs>
   );
 }
 
-function TabIcon({ children, focused, highlight }: any) {
-  return (
-    <View
-      style={[
-        styles.tabIcon,
-        focused && styles.tabIconActive,
-        highlight && { backgroundColor: colors.primary },
-      ]}
-    >
-      {children}
-    </View>
-  );
-}
-
 const styles = StyleSheet.create({
-  tabIcon: {
-    width: 40,
-    height: 40,
+  postBtn: {
+    width: 46,
+    height: 46,
+    borderRadius: 23,
+    backgroundColor: colors.primary,
     alignItems: "center",
     justifyContent: "center",
-  },
-  tabIconActive: {
-    backgroundColor: colors.yellow,
-    borderWidth: 2,
-    borderColor: "#000",
+    marginTop: -4,
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.4,
+    shadowRadius: 12,
+    elevation: 6,
   },
 });

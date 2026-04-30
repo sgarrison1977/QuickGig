@@ -48,7 +48,7 @@ export default function PublicProfile() {
           <ArrowLeft size={22} color="#000" strokeWidth={2.5} />
         </TouchableOpacity>
 
-        <View style={[brutal.cardLarge, { backgroundColor: colors.purple }]}>
+        <View style={[brutal.cardLarge, { backgroundColor: colors.accent }]}>
           <View style={styles.row}>
             {user.avatar ? (
               <Image source={{ uri: user.avatar }} style={styles.avatar} />
@@ -115,35 +115,36 @@ const styles = StyleSheet.create({
   back: {
     width: 44,
     height: 44,
-    borderWidth: 2,
-    borderColor: "#000",
-    backgroundColor: "#fff",
+    borderRadius: 14,
+    backgroundColor: colors.surface,
     alignItems: "center",
     justifyContent: "center",
+    borderWidth: 1,
+    borderColor: colors.border,
   },
   row: { flexDirection: "row", alignItems: "center", gap: 14 },
-  avatar: { width: 70, height: 70, borderWidth: 2, borderColor: "#000" },
-  avFallback: { backgroundColor: "#fff", alignItems: "center", justifyContent: "center" },
-  avLetter: { fontSize: 32, fontWeight: "900", color: "#000" },
+  avatar: { width: 70, height: 70, borderRadius: 35 },
+  avFallback: { backgroundColor: "rgba(255,255,255,0.25)", alignItems: "center", justifyContent: "center" },
+  avLetter: { fontSize: 30, fontWeight: "800", color: "#fff" },
   nameRow: { flexDirection: "row", alignItems: "center", gap: 6 },
-  name: { fontSize: 22, fontWeight: "900", color: "#000" },
+  name: { fontSize: 22, fontWeight: "800", color: "#fff" },
   ver: {
-    backgroundColor: colors.verified,
-    borderWidth: 1.5,
-    borderColor: "#000",
-    width: 18,
-    height: 18,
+    backgroundColor: "rgba(255,255,255,0.25)",
+    borderRadius: 999,
+    paddingHorizontal: 6,
+    width: 22,
+    height: 22,
     alignItems: "center",
     justifyContent: "center",
   },
-  statsRow: { flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6, flexWrap: "wrap" },
-  stat: { flexDirection: "row", alignItems: "center", gap: 3 },
-  statText: { fontWeight: "900", color: "#000" },
-  statSub: { color: "#000", fontWeight: "700", fontSize: 13 },
-  h2: { fontSize: 22, fontWeight: "900", color: "#000", marginTop: 8 },
-  muted: { color: colors.textSecondary, fontWeight: "600" },
+  statsRow: { flexDirection: "row", alignItems: "center", gap: 8, marginTop: 8, flexWrap: "wrap" },
+  stat: { flexDirection: "row", alignItems: "center", gap: 4 },
+  statText: { fontWeight: "800", color: "#fff" },
+  statSub: { color: "rgba(255,255,255,0.85)", fontWeight: "600", fontSize: 13 },
+  h2: { fontSize: 20, fontWeight: "800", color: colors.text, marginTop: 8 },
+  muted: { color: colors.textSecondary, fontWeight: "500" },
   reviewHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
-  reviewer: { fontWeight: "900", color: "#000" },
+  reviewer: { fontWeight: "700", color: colors.text },
   starsSm: { flexDirection: "row", gap: 2 },
-  comment: { color: "#000", marginTop: 6, fontWeight: "500" },
+  comment: { color: colors.text, marginTop: 6, fontWeight: "500" },
 });

@@ -1,75 +1,110 @@
-import { StyleSheet } from "react-native";
+import { StyleSheet, Platform } from "react-native";
 
 export const colors = {
-  bg: "#FDFBF7",
+  // Backgrounds
+  bg: "#F7F8FC",
   surface: "#FFFFFF",
-  alt: "#FFE66D",
-  primary: "#FF6B6B",
-  secondary: "#4ECDC4",
-  yellow: "#FFE66D",
+  surfaceAlt: "#F2F4FA",
+
+  // Brand
+  primary: "#FF5A5F",          // vibrant coral
+  primaryDark: "#E63946",
+  primarySoft: "#FFE9EA",
+
+  secondary: "#0EBE9F",        // teal
+  secondarySoft: "#D6F5EE",
+
+  accent: "#7C5CFF",            // purple
+  accentSoft: "#ECE6FF",
+
+  yellow: "#FFC93C",
+  yellowSoft: "#FFF3CC",
+
   orange: "#FF9F1C",
-  text: "#1A1A1A",
-  textSecondary: "#4A4A4A",
-  textDisabled: "#A0A0A0",
-  border: "#000000",
-  borderLight: "#E5E5E5",
-  success: "#2D6A4F",
+
+  // Text
+  text: "#0E1230",
+  textSecondary: "#5A6079",
+  textDisabled: "#9CA3B0",
+
+  // Borders
+  border: "#E5E8F0",
+  borderSoft: "#EFF1F7",
+
+  // Status
+  success: "#0EBE9F",
   warning: "#FF9F1C",
-  error: "#E63946",
+  error: "#EF4444",
   verified: "#3A86FF",
-  purple: "#C9A0FF",
+
+  // Misc
+  shadow: "rgba(14, 18, 48, 0.08)",
+  shadowLg: "rgba(14, 18, 48, 0.12)",
 };
 
+const softShadow = Platform.select({
+  ios: {
+    shadowColor: "#0E1230",
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+  },
+  android: { elevation: 4 },
+  default: {},
+});
+
+const liftShadow = Platform.select({
+  ios: {
+    shadowColor: "#0E1230",
+    shadowOffset: { width: 0, height: 12 },
+    shadowOpacity: 0.14,
+    shadowRadius: 28,
+  },
+  android: { elevation: 8 },
+  default: {},
+});
+
+const buttonShadow = Platform.select({
+  ios: {
+    shadowColor: colors.primary,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.28,
+    shadowRadius: 18,
+  },
+  android: { elevation: 6 },
+  default: {},
+});
+
+// `brutal` name kept for compatibility; styles are now modern soft cards.
 export const brutal = StyleSheet.create({
   card: {
     backgroundColor: colors.surface,
-    borderWidth: 2,
-    borderColor: colors.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 6,
-    padding: 16,
+    borderRadius: 18,
+    padding: 18,
+    ...softShadow,
   },
   cardLarge: {
     backgroundColor: colors.surface,
-    borderWidth: 2,
-    borderColor: colors.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 6, height: 6 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 8,
-    padding: 20,
+    borderRadius: 22,
+    padding: 22,
+    ...liftShadow,
   },
   buttonPrimary: {
     backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: colors.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 6,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
+    ...buttonShadow,
   },
   buttonSecondary: {
-    backgroundColor: colors.yellow,
-    borderWidth: 2,
-    borderColor: colors.border,
-    shadowColor: "#000",
-    shadowOffset: { width: 4, height: 4 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 6,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
+    backgroundColor: colors.text,
+    borderRadius: 16,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
@@ -77,65 +112,70 @@ export const brutal = StyleSheet.create({
   },
   buttonOutline: {
     backgroundColor: colors.surface,
-    borderWidth: 2,
+    borderRadius: 16,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    paddingVertical: 14,
-    paddingHorizontal: 18,
+    paddingVertical: 15,
+    paddingHorizontal: 20,
     alignItems: "center",
     justifyContent: "center",
     flexDirection: "row",
     gap: 8,
   },
   buttonText: {
-    color: colors.text,
-    fontWeight: "900",
+    color: "#fff",
+    fontWeight: "700",
     fontSize: 15,
-    letterSpacing: 0.5,
-    textTransform: "uppercase",
+    letterSpacing: 0.2,
+  },
+  buttonTextDark: {
+    color: colors.text,
+    fontWeight: "700",
+    fontSize: 15,
+    letterSpacing: 0.2,
   },
   input: {
     backgroundColor: colors.surface,
-    borderWidth: 2,
+    borderRadius: 14,
+    borderWidth: 1.5,
     borderColor: colors.border,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
-    fontSize: 16,
+    paddingVertical: 14,
+    paddingHorizontal: 16,
+    fontSize: 15,
     fontWeight: "500",
     color: colors.text,
   },
   badge: {
-    backgroundColor: colors.secondary,
-    borderWidth: 2,
-    borderColor: colors.border,
-    paddingHorizontal: 10,
-    paddingVertical: 4,
+    backgroundColor: colors.secondarySoft,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 5,
     alignSelf: "flex-start",
     flexDirection: "row",
     alignItems: "center",
     gap: 4,
   },
   badgeText: {
-    color: colors.text,
-    fontWeight: "800",
+    color: colors.secondary,
+    fontWeight: "700",
     fontSize: 11,
-    textTransform: "uppercase",
-    letterSpacing: 0.5,
+    letterSpacing: 0.3,
   },
   h1: {
-    fontSize: 32,
-    fontWeight: "900",
+    fontSize: 34,
+    fontWeight: "800",
     color: colors.text,
-    letterSpacing: -1,
+    letterSpacing: -0.8,
   },
   h2: {
     fontSize: 26,
-    fontWeight: "900",
+    fontWeight: "800",
     color: colors.text,
-    letterSpacing: -0.5,
+    letterSpacing: -0.4,
   },
   h3: {
-    fontSize: 20,
-    fontWeight: "800",
+    fontSize: 19,
+    fontWeight: "700",
     color: colors.text,
   },
   body: {
@@ -146,9 +186,11 @@ export const brutal = StyleSheet.create({
   },
   caption: {
     fontSize: 12,
-    fontWeight: "800",
-    textTransform: "uppercase",
-    letterSpacing: 1,
+    fontWeight: "700",
     color: colors.textSecondary,
+    letterSpacing: 0.4,
+    textTransform: "uppercase",
   },
 });
+
+export const shadows = { soft: softShadow, lift: liftShadow };

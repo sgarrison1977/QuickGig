@@ -87,7 +87,7 @@ export default function Chat() {
                   testID={`msg-${m.id}`}
                   style={[styles.bubble, m.sender_id === user?.id ? styles.mine : styles.theirs]}
                 >
-                  <Text style={[styles.bubbleText, m.sender_id === user?.id && { color: "#000" }]}>
+                  <Text style={[styles.bubbleText, m.sender_id !== user?.id && { color: colors.text }]}>
                     {m.text}
                   </Text>
                 </View>
@@ -111,8 +111,9 @@ export default function Chat() {
             onPress={send}
             disabled={!text.trim() || sending}
             style={[styles.sendBtn, (!text.trim() || sending) && { opacity: 0.5 }]}
+            activeOpacity={0.85}
           >
-            <Send size={20} color="#000" strokeWidth={3} />
+            <Send size={18} color="#fff" strokeWidth={2.6} />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
@@ -126,67 +127,58 @@ const styles = StyleSheet.create({
     flexDirection: "row",
     alignItems: "center",
     paddingHorizontal: 16,
-    paddingVertical: 10,
+    paddingVertical: 12,
     gap: 12,
-    borderBottomWidth: 2,
-    borderBottomColor: "#000",
-    backgroundColor: colors.alt,
+    backgroundColor: colors.surface,
+    borderBottomWidth: 1,
+    borderBottomColor: colors.border,
   },
   back: {
     width: 40,
     height: 40,
-    borderWidth: 2,
-    borderColor: "#000",
-    backgroundColor: "#fff",
+    borderRadius: 12,
+    backgroundColor: colors.surfaceAlt,
     alignItems: "center",
     justifyContent: "center",
   },
-  title: { fontSize: 24, fontWeight: "900", color: "#000", letterSpacing: -1 },
+  title: { fontSize: 20, fontWeight: "800", color: colors.text, letterSpacing: -0.4 },
   list: { padding: 16, gap: 8 },
   bubble: {
     maxWidth: "78%",
-    borderWidth: 2,
-    borderColor: "#000",
-    paddingHorizontal: 12,
-    paddingVertical: 8,
+    borderRadius: 18,
+    paddingHorizontal: 14,
+    paddingVertical: 10,
   },
-  mine: { alignSelf: "flex-end", backgroundColor: colors.yellow },
-  theirs: { alignSelf: "flex-start", backgroundColor: "#fff" },
-  bubbleText: { fontSize: 15, color: "#000", fontWeight: "500" },
+  mine: { alignSelf: "flex-end", backgroundColor: colors.primary, borderBottomRightRadius: 6 },
+  theirs: { alignSelf: "flex-start", backgroundColor: colors.surface, borderBottomLeftRadius: 6 },
+  bubbleText: { fontSize: 15, color: "#fff", fontWeight: "500" },
   empty: { padding: 32, alignItems: "center" },
-  emptyText: { color: colors.textSecondary, fontWeight: "600" },
+  emptyText: { color: colors.textSecondary, fontWeight: "500" },
   inputRow: {
     flexDirection: "row",
     gap: 8,
     padding: 12,
-    borderTopWidth: 2,
-    borderTopColor: "#000",
-    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderTopColor: colors.border,
+    backgroundColor: colors.surface,
   },
   input: {
     flex: 1,
-    borderWidth: 2,
-    borderColor: "#000",
-    paddingHorizontal: 12,
-    paddingVertical: 10,
+    borderRadius: 22,
+    backgroundColor: colors.surfaceAlt,
+    paddingHorizontal: 16,
+    paddingVertical: 11,
     fontSize: 15,
     fontWeight: "500",
-    color: "#000",
+    color: colors.text,
     maxHeight: 100,
-    backgroundColor: "#fff",
   },
   sendBtn: {
-    width: 50,
-    height: 50,
+    width: 44,
+    height: 44,
     backgroundColor: colors.primary,
-    borderWidth: 2,
-    borderColor: "#000",
+    borderRadius: 22,
     alignItems: "center",
     justifyContent: "center",
-    shadowColor: "#000",
-    shadowOffset: { width: 3, height: 3 },
-    shadowOpacity: 1,
-    shadowRadius: 0,
-    elevation: 4,
   },
 });
