@@ -271,9 +271,23 @@ export default function JobDetail() {
           ) : null}
 
           {isPoster && job.status === "open" ? (
-            <TouchableOpacity testID="cancel-job-btn" style={[brutal.buttonOutline, { borderColor: colors.error }]} onPress={cancel}>
-              <XCircle size={18} color={colors.error} strokeWidth={2.4} />
-              <Text style={[brutal.buttonTextDark, { color: colors.error }]}>Cancel Job</Text>
+            <TouchableOpacity
+              testID="cancel-job-btn"
+              style={{
+                backgroundColor: colors.error,
+                borderRadius: 16,
+                paddingVertical: 16,
+                paddingHorizontal: 20,
+                flexDirection: "row",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+              }}
+              onPress={cancel}
+              activeOpacity={0.85}
+            >
+              <XCircle size={18} color="#fff" strokeWidth={2.6} />
+              <Text style={{ color: "#fff", fontWeight: "700", fontSize: 15 }}>Cancel Job</Text>
             </TouchableOpacity>
           ) : null}
         </View>
