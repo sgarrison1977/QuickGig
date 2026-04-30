@@ -16,7 +16,7 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as Location from "expo-location";
 import * as ImagePicker from "expo-image-picker";
-import { MapPin, Camera, X, Plus, ShieldAlert, ShieldCheck } from "lucide-react-native";
+import { MapPin, Camera, X, Plus, ShieldAlert, ShieldCheck, Search } from "lucide-react-native";
 import { api, CATEGORIES } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, brutal } from "../../src/theme";
@@ -85,6 +85,28 @@ export default function PostJob() {
         setAddress([street, city].filter(Boolean).join(", "));
       }
     } catch {}
+  };
+
+  const lookupAddress = async () => {
+    if (!address.trim()) {
+      Alert.alert("Type an address first", "Enter the street, city, and state above, then tap Lookup.");
+      return;
+    }
+    try {
+      const results = await Location.geocodeAsync(address.trim());
+      if (results && results.length > 0) {
+        const r = results[0];
+        setCoords({ lat: r.latitude, lng: r.longitude });
+        Alert.alert("Address found ✓", `${r.latitude.toFixed(4)}, ${r.longitude.toFixed(4)}`);
+      } else {
+        Alert.alert(
+          "Couldn't find that address",
+          "Try a more complete address (e.g., '123 Main St, Springfield, IL') or use GPS."
+        );
+      }
+    } catch (e: any) {
+      Alert.alert("Lookup failed", e.message || "Try again or use GPS.");
+    }
   };
 
   const addPhoto = async () => {
@@ -251,20 +273,48 @@ export default function PostJob() {
           <TextInput
             testID="post-address"
             value={address}
-            onChangeText={setAddress}
-            placeholder="Street, City"
+            onChangeText={(t) => {
+              setAddress(t);
+              // typing a new address invalidates previous coords
+              if (coords) setCoords(null);
+            }}
+            placeholder="123 Main St, Springfield, IL"
             style={brutal.input}
             placeholderTextColor={colors.textDisabled}
+            multiline
           />
-          <TouchableOpacity testID="use-my-location" style={brutal.buttonOutline} onPress={useMyLocation}>
-            <MapPin size={18} color="#000" strokeWidth={2.5} />
-            <Text style={brutal.buttonText}>{coords ? "Location set ✓" : "Use my current location"}</Text>
-          </TouchableOpacity>
+          <View style={styles.locBtnRow}>
+            <TouchableOpacity
+              testID="use-my-location"
+              style={[styles.locBtn, coords && { backgroundColor: colors.secondarySoft, borderColor: colors.secondary }]}
+              onPress={useMyLocation}
+              activeOpacity={0.85}
+            >
+              <MapPin size={16} color={coords ? colors.secondary : colors.text} strokeWidth={2.4} />
+              <Text style={[styles.locBtnText, coords && { color: colors.secondary }]}>
+                {coords ? "GPS Location Set" : "Use My GPS"}
+              </Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              testID="lookup-address"
+              style={styles.locBtn}
+              onPress={lookupAddress}
+              activeOpacity={0.85}
+            >
+              <Search size={16} color={colors.text} strokeWidth={2.4} />
+              <Text style={styles.locBtnText}>Lookup Address</Text>
+            </TouchableOpacity>
+          </View>
           {coords ? (
             <Text style={styles.coordsText}>
-              {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
+              📍 Pinned at {coords.lat.toFixed(4)}, {coords.lng.toFixed(4)}
             </Text>
-          ) : null}
+          ) : (
+            <Text style={styles.coordsHint}>
+              Type the address and tap <Text style={{ fontWeight: "800" }}>Lookup</Text>, or use{" "}
+              <Text style={{ fontWeight: "800" }}>GPS</Text> if you're at the job site.
+            </Text>
+          )}
 
           <Text style={brutal.caption}>Photos (optional)</Text>
           <View style={styles.photoRow}>
