@@ -11,13 +11,17 @@ import {
   ActivityIndicator,
   ImageBackground,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
-import { Search, MapPin, Star, ShieldCheck, X, Navigation } from "lucide-react-native";
+import { Search, MapPin, Star, ShieldCheck, X, Navigation, SlidersHorizontal } from "lucide-react-native";
 import { api, CATEGORIES, categoryMeta } from "../../src/api";
 import { colors, brutal, shadows } from "../../src/theme";
+import { FiltersSheet, BrowseFilters, DEFAULT_FILTERS, countActive } from "../../src/FiltersSheet";
+
+const FILTERS_STORAGE_KEY = "qg_browse_filters_v1";
 
 const RADIUS_OPTIONS = [
   { value: null, label: "Any" },
@@ -38,6 +42,27 @@ export default function Browse() {
   const [radius, setRadius] = useState<number | null>(null);
   const [coords, setCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [locStatus, setLocStatus] = useState<string>("");
+  const [filters, setFilters] = useState<BrowseFilters>(DEFAULT_FILTERS);
+  const [showSheet, setShowSheet] = useState(false);
+  const activeCount = countActive(filters);
+
+  // Load saved filters
+  useEffect(() => {
+    (async () => {
+      try {
+        const raw = await AsyncStorage.getItem(FILTERS_STORAGE_KEY);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          setFilters({ ...DEFAULT_FILTERS, ...parsed });
+        }
+      } catch {}
+    })();
+  }, []);
+
+  // Persist whenever filters change
+  useEffect(() => {
+    AsyncStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters)).catch(() => {});
+  }, [filters]);
 
   const ensureLocation = async () => {
     try {
@@ -60,7 +85,8 @@ export default function Browse() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const c = coords || (radius ? await ensureLocation() : null);
+      const needsGps = !!radius || filters.sort === "near";
+      const c = coords || (needsGps ? await ensureLocation() : null);
       const data = await api<any[]>("/jobs", {
         auth: true,
         query: {
@@ -70,6 +96,10 @@ export default function Browse() {
           lng: c?.lng,
           radius: radius && c ? radius : undefined,
           status: "open",
+          pay_type: filters.pay_type !== "all" ? filters.pay_type : undefined,
+          min_pay: filters.min_pay > 0 ? filters.min_pay : undefined,
+          verified_only: filters.verified_only ? true : undefined,
+          sort: filters.sort,
         },
       });
       setJobs(data);
@@ -80,7 +110,7 @@ export default function Browse() {
       setRefreshing(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [q, category, radius, coords]);
+  }, [q, category, radius, coords, filters]);
 
   useFocusEffect(
     useCallback(() => {
@@ -94,6 +124,13 @@ export default function Browse() {
 
   return (
     <SafeAreaView style={styles.safe} edges={["top"]}>
+      <FiltersSheet
+        visible={showSheet}
+        value={filters}
+        hasLocation={!!coords}
+        onClose={() => setShowSheet(false)}
+        onApply={(f) => setFilters(f)}
+      />
       <FlatList
         data={jobs}
         keyExtractor={(item) => item.id}
@@ -123,24 +160,43 @@ export default function Browse() {
               </View>
             </LinearGradient>
 
-            {/* Search */}
-            <View style={styles.searchBox}>
-              <Search size={18} color={colors.textSecondary} strokeWidth={2.2} />
-              <TextInput
-                testID="search-input"
-                value={q}
-                onChangeText={setQ}
-                placeholder="Search gigs..."
-                placeholderTextColor={colors.textDisabled}
-                style={styles.searchInput}
-                onSubmitEditing={load}
-                returnKeyType="search"
-              />
-              {q ? (
-                <TouchableOpacity onPress={() => setQ("")} testID="clear-search">
-                  <X size={16} color={colors.textSecondary} strokeWidth={2.4} />
-                </TouchableOpacity>
-              ) : null}
+            {/* Search + Filters */}
+            <View style={styles.searchBar}>
+              <View style={styles.searchBox}>
+                <Search size={18} color={colors.textSecondary} strokeWidth={2.2} />
+                <TextInput
+                  testID="search-input"
+                  value={q}
+                  onChangeText={setQ}
+                  placeholder="Search gigs..."
+                  placeholderTextColor={colors.textDisabled}
+                  style={styles.searchInput}
+                  onSubmitEditing={load}
+                  returnKeyType="search"
+                />
+                {q ? (
+                  <TouchableOpacity onPress={() => setQ("")} testID="clear-search">
+                    <X size={16} color={colors.textSecondary} strokeWidth={2.4} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
+              <TouchableOpacity
+                testID="filters-open"
+                style={[styles.filterBtn, activeCount > 0 && styles.filterBtnActive]}
+                onPress={() => setShowSheet(true)}
+                activeOpacity={0.85}
+              >
+                <SlidersHorizontal
+                  size={18}
+                  color={activeCount > 0 ? "#fff" : colors.text}
+                  strokeWidth={2.4}
+                />
+                {activeCount > 0 ? (
+                  <View style={styles.filterBadge}>
+                    <Text style={styles.filterBadgeText}>{activeCount}</Text>
+                  </View>
+                ) : null}
+              </TouchableOpacity>
             </View>
 
             {/* Categories */}
@@ -207,6 +263,54 @@ export default function Browse() {
                 <Text style={styles.resultsSub}>within {radius} miles</Text>
               ) : null}
             </View>
+
+            {/* Active filter chips (tap × to remove) */}
+            {activeCount > 0 ? (
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={styles.activeChipsRow}
+              >
+                {filters.sort !== "best" ? (
+                  <ActiveChip
+                    label={
+                      filters.sort === "new"
+                        ? "Newest"
+                        : filters.sort === "pay"
+                        ? "Highest pay"
+                        : "Closest"
+                    }
+                    onClear={() => setFilters((f) => ({ ...f, sort: "best" }))}
+                  />
+                ) : null}
+                {filters.pay_type !== "all" ? (
+                  <ActiveChip
+                    label={filters.pay_type === "hourly" ? "Hourly" : "Fixed pay"}
+                    onClear={() => setFilters((f) => ({ ...f, pay_type: "all" }))}
+                  />
+                ) : null}
+                {filters.min_pay > 0 ? (
+                  <ActiveChip
+                    label={`$${filters.min_pay}+`}
+                    onClear={() => setFilters((f) => ({ ...f, min_pay: 0 }))}
+                  />
+                ) : null}
+                {filters.verified_only ? (
+                  <ActiveChip
+                    label="Verified only"
+                    onClear={() => setFilters((f) => ({ ...f, verified_only: false }))}
+                  />
+                ) : null}
+                <TouchableOpacity
+                  testID="clear-all-filters"
+                  onPress={() => setFilters(DEFAULT_FILTERS)}
+                  style={styles.clearAllChip}
+                  activeOpacity={0.85}
+                >
+                  <Text style={styles.clearAllText}>Clear all</Text>
+                </TouchableOpacity>
+              </ScrollView>
+            ) : null}
           </View>
         }
         ListEmptyComponent={
@@ -279,6 +383,20 @@ function DistancePill({ label, active, onPress }: any) {
         strokeWidth={2.4}
       />
       <Text style={[styles.distPillText, active && { color: "#fff" }]}>{label}</Text>
+    </TouchableOpacity>
+  );
+}
+
+function ActiveChip({ label, onClear }: { label: string; onClear: () => void }) {
+  return (
+    <TouchableOpacity
+      testID={`active-chip-${label}`}
+      onPress={onClear}
+      activeOpacity={0.8}
+      style={styles.activeChip}
+    >
+      <Text style={styles.activeChipText}>{label}</Text>
+      <X size={12} color="#fff" strokeWidth={2.8} />
     </TouchableOpacity>
   );
 }
@@ -364,7 +482,9 @@ const styles = StyleSheet.create({
   heroTag: { fontSize: 11, color: "rgba(255,255,255,0.85)", fontWeight: "800", letterSpacing: 1.6 },
   heroTitle: { fontSize: 26, color: "#fff", fontWeight: "800", letterSpacing: -0.6, lineHeight: 30, marginTop: 6 },
 
+  searchBar: { flexDirection: "row", alignItems: "center", gap: 10 },
   searchBox: {
+    flex: 1,
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: colors.surface,
@@ -374,6 +494,50 @@ const styles = StyleSheet.create({
     ...(shadows.soft as object),
   },
   searchInput: { flex: 1, paddingVertical: 14, fontSize: 15, fontWeight: "500", color: colors.text },
+  filterBtn: {
+    width: 52,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
+    alignItems: "center",
+    justifyContent: "center",
+    ...(shadows.soft as object),
+  },
+  filterBtnActive: { backgroundColor: colors.primary },
+  filterBadge: {
+    position: "absolute",
+    top: 4,
+    right: 4,
+    minWidth: 18,
+    height: 18,
+    paddingHorizontal: 4,
+    borderRadius: 9,
+    backgroundColor: colors.yellow,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  filterBadgeText: { fontWeight: "800", fontSize: 11, color: colors.text },
+
+  activeChipsRow: { gap: 8, paddingRight: 4, paddingVertical: 2 },
+  activeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: colors.text,
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+  },
+  activeChipText: { color: "#fff", fontWeight: "700", fontSize: 12 },
+  clearAllChip: {
+    borderRadius: 999,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    backgroundColor: colors.surfaceAlt,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  clearAllText: { color: colors.primary, fontWeight: "800", fontSize: 12 },
 
   sectionTitle: { fontSize: 13, fontWeight: "800", color: colors.text, letterSpacing: 0.4, marginBottom: 10, paddingHorizontal: 2 },
 

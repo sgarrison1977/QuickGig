@@ -459,19 +459,27 @@ async def list_jobs(
     category: Optional[str] = None,
     q: Optional[str] = None,
     status: Optional[str] = "open",
+    pay_type: Optional[str] = None,        # "hourly" | "fixed" | "all"
+    min_pay: Optional[float] = None,       # minimum pay amount
+    verified_only: Optional[bool] = False, # posters with is_verified=True only
+    sort: Optional[str] = "best",          # best | new | pay | near
 ):
-    query = {}
+    query: Dict[str, Any] = {}
     if status and status != "all":
         query["status"] = status
     if category and category != "all":
         query["category"] = category
+    if pay_type and pay_type in ("hourly", "fixed"):
+        query["pay_type"] = pay_type
+    if min_pay is not None and min_pay > 0:
+        query["pay_amount"] = {"$gte": float(min_pay)}
     if q:
         query["$or"] = [
             {"title": {"$regex": q, "$options": "i"}},
             {"description": {"$regex": q, "$options": "i"}},
         ]
-    cursor = db.jobs.find(query, {"_id": 0}).sort("created_at", -1).limit(200)
-    jobs = await cursor.to_list(200)
+    cursor = db.jobs.find(query, {"_id": 0}).sort("created_at", -1).limit(400)
+    jobs = await cursor.to_list(400)
     # Pre-filter by distance and collect poster_ids
     filtered: list = []
     for j in jobs:
@@ -486,13 +494,45 @@ async def list_jobs(
     if poster_ids:
         async for u in db.users.find({"id": {"$in": poster_ids}}, USER_PROJECTION):
             posters_map[u["id"]] = u
+    # Optional: verified-only posters
+    if verified_only:
+        filtered = [
+            (j, d) for (j, d) in filtered
+            if posters_map.get(j["poster_id"], {}).get("is_verified")
+        ]
     results = [public_job(j, poster=posters_map.get(j["poster_id"]), distance=dist) for j, dist in filtered]
-    # Sort: boosted first, then by distance (if available) or recency
-    def sort_key(x):
-        boost_rank = 0 if x["is_boosted"] else 1
-        dist_rank = x["distance_miles"] if x["distance_miles"] is not None else 1e9
-        return (boost_rank, dist_rank)
-    results.sort(key=sort_key)
+    # Sorting
+    now_ts = datetime.now(timezone.utc).timestamp()
+
+    def parse_ts(x: Any) -> float:
+        if isinstance(x, datetime):
+            return x.timestamp()
+        return 0.0
+
+    if sort == "new":
+        results.sort(key=lambda x: -parse_ts(
+            datetime.fromisoformat(x["created_at"]) if x.get("created_at") else None
+        ) if x.get("created_at") else -now_ts)
+    elif sort == "pay":
+        results.sort(key=lambda x: (-(x.get("pay_amount") or 0), 0 if x["is_boosted"] else 1))
+    elif sort == "near":
+        results.sort(key=lambda x: (
+            x["distance_miles"] if x["distance_miles"] is not None else 1e9,
+            0 if x["is_boosted"] else 1,
+        ))
+    else:  # "best" — boosted first, then closer, then newer
+        def best_key(x):
+            boost_rank = 0 if x["is_boosted"] else 1
+            dist_rank = x["distance_miles"] if x["distance_miles"] is not None else 1e9
+            created = x.get("created_at")
+            created_ts = 0.0
+            if created:
+                try:
+                    created_ts = datetime.fromisoformat(created).timestamp()
+                except Exception:
+                    created_ts = 0.0
+            return (boost_rank, dist_rank, -created_ts)
+        results.sort(key=best_key)
     return results
 
 

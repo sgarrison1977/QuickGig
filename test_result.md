@@ -218,19 +218,142 @@ frontend:
             pushes. Frontend testing not requested — will be verified manually on
             a real device by the user.
 
+
+  - task: "Enhanced GET /api/jobs filters (pay_type, min_pay, verified_only, sort)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Extended GET /api/jobs with 4 new optional query params:
+              • pay_type      "hourly" | "fixed"  (omitted/"all" = any)
+              • min_pay       float >= 0          (0 = any, else pay_amount >= N)
+              • verified_only bool                (only return jobs whose poster
+                                                  has is_verified=True)
+              • sort          "best" | "new" | "pay" | "near"
+                              best (default) = boosted first, then closest, then
+                                               newest
+                              new            = created_at desc
+                              pay            = pay_amount desc (boosted tiebreaker)
+                              near           = distance_miles asc (requires lat/lng
+                                               — callers without GPS fall back to
+                                               treating distance as infinity so
+                                               results still return in stable order)
+            Existing params (q, category, radius, lat, lng, status) unchanged.
+            Backend limit raised from 200 → 400 jobs so filters have more to narrow.
+        - working: true
+          agent: "testing"
+          comment: |
+            VERIFIED — 30/30 filter assertions PASS against the live backend
+            (https://task-connect-81.preview.emergentagent.com/api).
+            Test harness: /app/backend_test_filters.py
+            Seeded a deterministic dataset for a per-run RUN_TAG so assertions
+            are isolated:
+              • 2 posters: sarah.miller.* (verified) and david.chen.*
+                (temporarily verified to post, then is_verified flipped back
+                to False directly via Mongo so verified_only assertions are
+                meaningful).
+              • 4 jobs:
+                  Hourly $15 (verified)   Hourly $45 (verified)
+                  Fixed  $25 (unverified) Fixed  $80 (unverified)
+                with slightly offset lat/lng around SF.
+
+            TEST 1 — pay_type
+              ✅ pay_type=hourly  → 2 results, all pay_type==hourly
+              ✅ pay_type=fixed   → 2 results, all pay_type==fixed
+              ✅ pay_type omitted → no filter (4 of 4)
+              ✅ pay_type=all     → no filter (4 of 4)
+            TEST 8 — invalid pay_type
+              ✅ pay_type=weekly  → ignored gracefully, 200 + 4 results
+            TEST 2 / 6 — min_pay
+              ✅ min_pay=20 → only $25/$45/$80 returned
+              ✅ min_pay=0  → no filter
+              ✅ min_pay=-10 → no filter (treated as omitted)
+            TEST 3 — verified_only
+              ✅ verified_only=true  → 2 results, every poster.is_verified==True
+              ✅ verified_only=false → no filter (4)
+              ✅ omitted             → no filter (4)
+            TEST 7 — verified_only with empty match
+              ✅ verified_only=true & q=zzz... → 200 [] (no 500 even when
+                 posters_map is empty)
+            TEST 4 — sort
+              ✅ sort=new  → created_at DESC
+              ✅ sort=pay  → pay_amount DESC ([80,45,25,15])
+              ✅ sort=near (lat/lng=SF center) → distance_miles ASC
+                 ([0.0, 0.62, 1.18, 1.49])
+              ✅ sort=best default (no boosted, no lat/lng) → created_at DESC
+                 tie-break working
+              ✅ sort=best with a boosted job → boosted job floats to position 0
+                 (verified by boosting the $25 fixed job via
+                 POST /api/billing/boost-post {plan:"24h"})
+            TEST 5 — combined filters AND together
+              ✅ pay_type=hourly & min_pay=25 & verified_only=true → exactly
+                 the $45 hourly verified job
+              ✅ pay_type=fixed & min_pay=50 → exactly the $80 fixed job
+            Existing params still combine correctly:
+              ✅ q=pricey & pay_type=hourly → only $45 hourly
+              ✅ category=moving & min_pay=50 → only the $80 moving job
+
+            All responses returned 200 in well under 1s; backend.err.log shows
+            no exceptions during the run. Push-notification endpoints were
+            NOT re-tested (already verified previously).
+
 metadata:
   created_by: "main_agent"
-  version: "1.1"
-  test_sequence: 1
+  version: "1.2"
+  test_sequence: 2
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Enhanced GET /api/jobs filters (pay_type, min_pay, verified_only, sort)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
+    - agent: "main"
+      message: |
+        Added 4 new query params to GET /api/jobs: pay_type, min_pay,
+        verified_only, sort. Please run focused tests against these:
+
+        SETUP
+          • Use any valid user credential (/app/memory/test_credentials.md).
+          • If needed, create 4–6 jobs spanning hourly & fixed pay types and
+            a mix of pay_amounts ($10 / $20 / $40 / $60). At least one job's
+            poster should be is_verified=True and at least one should not be.
+            You can mark any user verified via DB or the
+            POST /api/auth/verify-id endpoint with any base64 string.
+
+        TESTS
+          1. pay_type="hourly"  → all returned jobs.pay_type === "hourly".
+             pay_type="fixed"   → all returned jobs.pay_type === "fixed".
+             pay_type omitted / "all" → no filtering.
+          2. min_pay=20   → every returned job has pay_amount >= 20.
+             min_pay=0    → no filtering.
+          3. verified_only=true → every job's poster.is_verified === true.
+             verified_only=false / omitted → no filtering.
+          4. sort=new  → results sorted by created_at DESC.
+             sort=pay  → results sorted by pay_amount DESC.
+             sort=near + lat/lng provided → results sorted by distance_miles ASC.
+             sort=best (default) → boosted jobs first, then distance,
+                                   then newest.
+          5. Combined filters must AND together (e.g. pay_type=hourly &
+             min_pay=25 & verified_only=true → matches all three conditions).
+          6. When min_pay is <= 0 or not provided, no pay filter should apply.
+          7. verified_only must not break responses when the posters map is
+             empty (e.g. no jobs match).
+          8. Invalid pay_type (e.g. "weekly") must NOT error — the backend
+             should simply ignore unsupported values and return unfiltered.
+
+        Do NOT run frontend tests — UI changes are mounted but user wants to
+        verify in person.
+
     - agent: "testing"
       message: |
         Backend push-notification testing complete — 27/27 push-related tests
@@ -253,9 +376,29 @@ agent_communication:
         have been changed in a prior session (test_credentials.md notes this
         and gives a reset procedure). No action required for current scope.
 
-    - agent: "main"
+    - agent: "testing"
       message: |
-        Added push notification support using free Expo Push service. Please test:
+        Filters retest complete — 30/30 assertions PASS for the enhanced
+        GET /api/jobs (pay_type, min_pay, verified_only, sort) against the
+        live backend. Test harness saved at /app/backend_test_filters.py.
+        Seeded 4 deterministic jobs (2 hourly + 2 fixed, $15/$45/$25/$80) by
+        two posters (one verified, one demoted via direct Mongo write so the
+        verified_only filter is meaningful since job-posting requires
+        is_verified=true).
+        Highlights:
+          • All four new params behave per spec; unrecognised pay_type
+            (e.g. "weekly") is ignored gracefully (200, no 500).
+          • min_pay<=0 / negative / omitted → no filter applied.
+          • verified_only with empty match → 200 [], no crash on empty
+            posters_map.
+          • sort=new/pay/near work; sort=best floats boosted job to top
+            (validated by boosting one job via /api/billing/boost-post).
+          • Combined filters AND together (pay_type & min_pay & verified_only).
+          • Existing params (q, category, status, lat/lng, radius) still
+            cooperate with new ones.
+        Push-notification endpoints were intentionally NOT re-tested per
+        request — they were verified previously and remain unchanged.
+        Backend is ready; main agent can summarise & ship.
 
         1. AUTH + TOKEN REGISTRATION
            - Log in as a regular user (see /app/memory/test_credentials.md)
