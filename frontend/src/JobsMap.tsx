@@ -35,7 +35,15 @@ type Props = {
 export function JobsMap({ jobs, coords }: Props) {
   const router = useRouter();
   const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [tracking, setTracking] = useState<boolean>(true);
   const mapRef = useRef<any>(null);
+
+  // Disable tracksViewChanges shortly after first render so markers stay sharp
+  // but render correctly (Android bug: false-from-start = blank/tiny marker).
+  React.useEffect(() => {
+    const t = setTimeout(() => setTracking(false), 1500);
+    return () => clearTimeout(t);
+  }, [jobs.length]);
 
   const validJobs = useMemo(
     () =>
@@ -95,7 +103,7 @@ export function JobsMap({ jobs, coords }: Props) {
               key={j.id}
               coordinate={{ latitude: j.latitude, longitude: j.longitude }}
               onPress={() => setSelectedId(j.id)}
-              tracksViewChanges={false}
+              tracksViewChanges={tracking || isSel}
               anchor={{ x: 0.5, y: 1 }}
             >
               <View style={styles.markerOuter}>
@@ -221,18 +229,20 @@ export function JobsMap({ jobs, coords }: Props) {
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.surfaceAlt },
 
-  // Marker — bigger, bolder, glanceable from across the screen
-  markerOuter: { alignItems: "center", paddingBottom: 4 },
+  // Marker — bigger, bolder, glanceable from across the screen.
+  // Fixed dimensions are critical: react-native-maps captures the View as a
+  // bitmap and re-using it across zooms only works reliably with a stable size.
+  markerOuter: { alignItems: "center", width: 110, paddingBottom: 4 },
   marker: {
     paddingHorizontal: 14,
-    paddingVertical: 9,
+    height: 36,
+    minWidth: 70,
     borderRadius: 18,
-    minWidth: 64,
     alignItems: "center",
     justifyContent: "center",
+    flexDirection: "row",
     borderWidth: 3,
     borderColor: "#fff",
-    // platform shadow
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.35,
