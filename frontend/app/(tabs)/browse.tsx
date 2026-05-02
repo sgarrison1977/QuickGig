@@ -1,4 +1,4 @@
-import { useEffect, useState, useCallback } from "react";
+import { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -10,6 +10,8 @@ import {
   RefreshControl,
   ActivityIndicator,
   ImageBackground,
+  Pressable,
+  Animated,
 } from "react-native";
 import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter, useFocusEffect } from "expo-router";
@@ -21,6 +23,8 @@ import { api, CATEGORIES, categoryMeta } from "../../src/api";
 import { colors, brutal, shadows } from "../../src/theme";
 import { FiltersSheet, BrowseFilters, DEFAULT_FILTERS, countActive } from "../../src/FiltersSheet";
 import { JobsMap } from "../../src/JobsMap";
+import { JobListSkeleton } from "../../src/Skeletons";
+import { EmptyState } from "../../src/EmptyState";
 
 const FILTERS_STORAGE_KEY = "qg_browse_filters_v1";
 const VIEW_STORAGE_KEY = "qg_browse_view_v1";
@@ -342,14 +346,32 @@ export default function Browse() {
         }
         ListEmptyComponent={
           viewMode === "map" ? null : loading ? (
-            <View style={styles.loading}>
-              <ActivityIndicator size="large" color={colors.primary} />
+            <View style={{ paddingTop: 6 }}>
+              <JobListSkeleton count={4} />
             </View>
+          ) : activeCount > 0 || q || category !== "all" || radius ? (
+            <EmptyState
+              testID="empty-state"
+              emoji="🔍"
+              title="No gigs match your filters"
+              subtitle="Try widening your distance, removing filters, or clearing the search."
+              ctaLabel="Clear all filters"
+              onCtaPress={() => {
+                setFilters(DEFAULT_FILTERS);
+                setQ("");
+                setCategory("all");
+                setRadius(null);
+              }}
+            />
           ) : (
-            <View style={styles.empty} testID="empty-state">
-              <Text style={styles.emptyTitle}>No gigs found</Text>
-              <Text style={styles.emptyDesc}>Try a different category, distance, or search term.</Text>
-            </View>
+            <EmptyState
+              testID="empty-state"
+              emoji="✨"
+              title="No gigs nearby yet"
+              subtitle="Be the first to post a gig in your area, or pull down to refresh."
+              ctaLabel="Post a gig"
+              onCtaPress={() => router.push("/(tabs)/post")}
+            />
           )
         }
         renderItem={({ item }) => <JobCard job={item} onPress={() => router.push(`/job/${item.id}`)} />}
@@ -446,8 +468,20 @@ function hex2rgba(hex: string, a: number) {
 export function JobCard({ job, onPress }: any) {
   const cat = categoryMeta(job.category);
   const photos: string[] = Array.isArray(job.photos) ? job.photos : [];
+  const scale = useRef(new Animated.Value(1)).current;
+  const onIn = () =>
+    Animated.spring(scale, { toValue: 0.97, useNativeDriver: true, speed: 30, bounciness: 0 }).start();
+  const onOut = () =>
+    Animated.spring(scale, { toValue: 1, useNativeDriver: true, speed: 25, bounciness: 6 }).start();
   return (
-    <TouchableOpacity testID={`job-card-${job.id}`} onPress={onPress} activeOpacity={0.9} style={styles.jobCard}>
+    <Animated.View style={{ transform: [{ scale }] }}>
+      <Pressable
+        testID={`job-card-${job.id}`}
+        onPress={onPress}
+        onPressIn={onIn}
+        onPressOut={onOut}
+        style={styles.jobCard}
+      >
       {job.is_boosted ? (
         <View style={styles.boostedRibbon}>
           <Text style={styles.boostedRibbonText}>🚀  BOOSTED</Text>
@@ -515,7 +549,8 @@ export function JobCard({ job, onPress }: any) {
           </View>
         ) : null}
       </View>
-    </TouchableOpacity>
+      </Pressable>
+    </Animated.View>
   );
 }
 

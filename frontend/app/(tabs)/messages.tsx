@@ -5,14 +5,15 @@ import {
   StyleSheet,
   FlatList,
   TouchableOpacity,
-  ActivityIndicator,
   RefreshControl,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { MessageCircle, ShieldCheck } from "lucide-react-native";
+import { ShieldCheck } from "lucide-react-native";
 import { api } from "../../src/api";
 import { colors, shadows } from "../../src/theme";
+import { ConvoListSkeleton } from "../../src/Skeletons";
+import { EmptyState } from "../../src/EmptyState";
 
 export default function Messages() {
   const router = useRouter();
@@ -46,8 +47,8 @@ export default function Messages() {
       </View>
 
       {loading ? (
-        <View style={styles.loading}>
-          <ActivityIndicator size="large" color={colors.primary} />
+        <View style={styles.list}>
+          <ConvoListSkeleton count={4} />
         </View>
       ) : (
         <FlatList
@@ -65,15 +66,14 @@ export default function Messages() {
             />
           }
           ListEmptyComponent={
-            <View style={styles.empty}>
-              <View style={styles.emptyIcon}>
-                <MessageCircle size={32} color={colors.primary} strokeWidth={2.2} />
-              </View>
-              <Text style={styles.emptyTitle}>No conversations yet</Text>
-              <Text style={styles.emptyDesc}>
-                When you accept or have your job accepted, a chat will appear here.
-              </Text>
-            </View>
+            <EmptyState
+              testID="convos-empty"
+              emoji="💬"
+              title="No conversations yet"
+              subtitle="When you accept a gig or someone accepts yours, your chat will pop up here."
+              ctaLabel="Find gigs"
+              onCtaPress={() => router.push("/(tabs)/browse")}
+            />
           }
           renderItem={({ item }) => (
             <TouchableOpacity
