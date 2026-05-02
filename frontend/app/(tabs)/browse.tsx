@@ -16,12 +16,14 @@ import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { LinearGradient } from "expo-linear-gradient";
 import * as Location from "expo-location";
-import { Search, MapPin, Star, ShieldCheck, X, Navigation, SlidersHorizontal } from "lucide-react-native";
+import { Search, MapPin, Star, ShieldCheck, X, Navigation, SlidersHorizontal, List, Map as MapIcon } from "lucide-react-native";
 import { api, CATEGORIES, categoryMeta } from "../../src/api";
 import { colors, brutal, shadows } from "../../src/theme";
 import { FiltersSheet, BrowseFilters, DEFAULT_FILTERS, countActive } from "../../src/FiltersSheet";
+import { JobsMap } from "../../src/JobsMap";
 
 const FILTERS_STORAGE_KEY = "qg_browse_filters_v1";
+const VIEW_STORAGE_KEY = "qg_browse_view_v1";
 
 const RADIUS_OPTIONS = [
   { value: null, label: "Any" },
@@ -44,9 +46,10 @@ export default function Browse() {
   const [locStatus, setLocStatus] = useState<string>("");
   const [filters, setFilters] = useState<BrowseFilters>(DEFAULT_FILTERS);
   const [showSheet, setShowSheet] = useState(false);
+  const [viewMode, setViewMode] = useState<"list" | "map">("list");
   const activeCount = countActive(filters);
 
-  // Load saved filters
+  // Load saved filters + view mode
   useEffect(() => {
     (async () => {
       try {
@@ -55,14 +58,20 @@ export default function Browse() {
           const parsed = JSON.parse(raw);
           setFilters({ ...DEFAULT_FILTERS, ...parsed });
         }
+        const v = await AsyncStorage.getItem(VIEW_STORAGE_KEY);
+        if (v === "map" || v === "list") setViewMode(v);
       } catch {}
     })();
   }, []);
 
-  // Persist whenever filters change
+  // Persist whenever filters / view change
   useEffect(() => {
     AsyncStorage.setItem(FILTERS_STORAGE_KEY, JSON.stringify(filters)).catch(() => {});
   }, [filters]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(VIEW_STORAGE_KEY, viewMode).catch(() => {});
+  }, [viewMode]);
 
   const ensureLocation = async () => {
     try {
@@ -132,7 +141,7 @@ export default function Browse() {
         onApply={(f) => setFilters(f)}
       />
       <FlatList
-        data={jobs}
+        data={viewMode === "map" ? [] : jobs}
         keyExtractor={(item) => item.id}
         contentContainerStyle={styles.list}
         refreshControl={
@@ -180,6 +189,18 @@ export default function Browse() {
                   </TouchableOpacity>
                 ) : null}
               </View>
+              <TouchableOpacity
+                testID="view-toggle"
+                style={[styles.filterBtn, viewMode === "map" && styles.filterBtnActive]}
+                onPress={() => setViewMode(viewMode === "list" ? "map" : "list")}
+                activeOpacity={0.85}
+              >
+                {viewMode === "list" ? (
+                  <MapIcon size={18} color={colors.text} strokeWidth={2.4} />
+                ) : (
+                  <List size={18} color="#fff" strokeWidth={2.4} />
+                )}
+              </TouchableOpacity>
               <TouchableOpacity
                 testID="filters-open"
                 style={[styles.filterBtn, activeCount > 0 && styles.filterBtnActive]}
@@ -314,7 +335,7 @@ export default function Browse() {
           </View>
         }
         ListEmptyComponent={
-          loading ? (
+          viewMode === "map" ? null : loading ? (
             <View style={styles.loading}>
               <ActivityIndicator size="large" color={colors.primary} />
             </View>
@@ -327,6 +348,13 @@ export default function Browse() {
         }
         renderItem={({ item }) => <JobCard job={item} onPress={() => router.push(`/job/${item.id}`)} />}
         ItemSeparatorComponent={() => <View style={{ height: 12 }} />}
+        ListFooterComponent={
+          viewMode === "map" ? (
+            <View style={styles.mapWrap} testID="map-container">
+              <JobsMap jobs={jobs} coords={coords} />
+            </View>
+          ) : null
+        }
       />
     </SafeAreaView>
   );
@@ -554,6 +582,14 @@ const styles = StyleSheet.create({
     justifyContent: "center",
   },
   clearAllText: { color: colors.primary, fontWeight: "800", fontSize: 12 },
+
+  mapWrap: {
+    height: 520,
+    marginTop: 6,
+    borderRadius: 20,
+    overflow: "hidden",
+    backgroundColor: colors.surfaceAlt,
+  },
 
   sectionTitle: { fontSize: 13, fontWeight: "800", color: colors.text, letterSpacing: 0.4, marginBottom: 10, paddingHorizontal: 2 },
 
