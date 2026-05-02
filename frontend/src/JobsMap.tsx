@@ -103,7 +103,7 @@ export function JobsMap({ jobs, coords }: Props) {
               key={j.id}
               coordinate={{ latitude: j.latitude, longitude: j.longitude }}
               onPress={() => setSelectedId(j.id)}
-              tracksViewChanges={tracking || isSel}
+              tracksViewChanges={true}
               anchor={{ x: 0.5, y: 0.5 }}
             >
               <View
@@ -114,7 +114,7 @@ export function JobsMap({ jobs, coords }: Props) {
                   isSel ? styles.markerSelected : null,
                 ]}
               >
-                <Text style={styles.markerText} numberOfLines={1}>
+                <Text style={styles.markerText} numberOfLines={1} allowFontScaling={false}>
                   ${j.pay_amount}
                   {j.pay_type === "hourly" ? "/hr" : ""}
                 </Text>
@@ -220,13 +220,12 @@ const styles = StyleSheet.create({
   // bitmap and re-using it across zooms only works reliably with a stable size.
   markerOuter: { alignItems: "center", width: 110, paddingBottom: 4 },
   marker: {
-    paddingHorizontal: 14,
-    height: 36,
-    minWidth: 70,
-    borderRadius: 18,
+    width: 96,
+    height: 38,
+    paddingHorizontal: 8,
+    borderRadius: 19,
     alignItems: "center",
     justifyContent: "center",
-    flexDirection: "row",
     borderWidth: 3,
     borderColor: "#fff",
     shadowColor: "#000",
