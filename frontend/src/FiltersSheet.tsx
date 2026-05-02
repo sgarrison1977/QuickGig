@@ -10,6 +10,7 @@ import {
   Switch,
   Platform,
 } from "react-native";
+import { useSafeAreaInsets } from "react-native-safe-area-context";
 import { BlurView } from "expo-blur";
 import { X, DollarSign, Clock, ShieldCheck, SortDesc, Zap, MapPin, Sparkles } from "lucide-react-native";
 import { colors, shadows } from "./theme";
@@ -64,6 +65,7 @@ type Props = {
 
 export function FiltersSheet({ visible, value, hasLocation, onClose, onApply }: Props) {
   const [draft, setDraft] = useState<BrowseFilters>(value);
+  const insets = useSafeAreaInsets();
 
   useEffect(() => {
     if (visible) setDraft(value);
@@ -88,7 +90,7 @@ export function FiltersSheet({ visible, value, hasLocation, onClose, onApply }: 
         <BlurView intensity={Platform.OS === "ios" ? 30 : 15} tint="dark" style={StyleSheet.absoluteFill} />
       </Pressable>
 
-      <View style={styles.sheet}>
+      <View style={[styles.sheet, { paddingBottom: Math.max(insets.bottom, 12) }]}>
         <View style={styles.handle} />
 
         <View style={styles.header}>
@@ -253,7 +255,6 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderTopLeftRadius: 26,
     borderTopRightRadius: 26,
-    paddingBottom: 20,
     maxHeight: "86%",
     ...(shadows.lift as object),
   },
