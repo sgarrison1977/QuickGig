@@ -104,34 +104,20 @@ export function JobsMap({ jobs, coords }: Props) {
               coordinate={{ latitude: j.latitude, longitude: j.longitude }}
               onPress={() => setSelectedId(j.id)}
               tracksViewChanges={tracking || isSel}
-              anchor={{ x: 0.5, y: 1 }}
+              anchor={{ x: 0.5, y: 0.5 }}
             >
-              <View style={styles.markerOuter}>
-                <View
-                  style={[
-                    styles.marker,
-                    { backgroundColor: isSel ? colors.text : colors.primary },
-                    j.is_boosted ? styles.markerBoosted : null,
-                    isSel ? styles.markerSelected : null,
-                  ]}
-                >
-                  <Text style={styles.markerText} numberOfLines={1}>
-                    ${j.pay_amount}
-                    {j.pay_type === "hourly" ? "/hr" : ""}
-                  </Text>
-                </View>
-                <View
-                  style={[
-                    styles.markerTail,
-                    { borderTopColor: isSel ? colors.text : colors.primary },
-                  ]}
-                />
-                <View
-                  style={[
-                    styles.markerDot,
-                    { backgroundColor: isSel ? colors.text : colors.primary },
-                  ]}
-                />
+              <View
+                style={[
+                  styles.marker,
+                  { backgroundColor: isSel ? colors.text : colors.primary },
+                  j.is_boosted ? styles.markerBoosted : null,
+                  isSel ? styles.markerSelected : null,
+                ]}
+              >
+                <Text style={styles.markerText} numberOfLines={1}>
+                  ${j.pay_amount}
+                  {j.pay_type === "hourly" ? "/hr" : ""}
+                </Text>
               </View>
             </Marker>
           );
