@@ -1,4 +1,5 @@
 import { useEffect, useRef } from "react";
+import { Platform } from "react-native";
 import { Stack, router } from "expo-router";
 import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";

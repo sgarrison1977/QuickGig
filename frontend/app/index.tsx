@@ -17,7 +17,6 @@ export default function Index() {
     );
   }
 
-  // Declarative redirect — works reliably on web + native
   return user ? <Redirect href="/(tabs)/browse" /> : <Redirect href="/(auth)/welcome" />;
 }
 

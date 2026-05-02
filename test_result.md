@@ -238,6 +238,107 @@ frontend:
               • sort          "best" | "new" | "pay" | "near"
                               best (default) = boosted first, then closest, then
                                                newest
+
+  - task: "Chat auto-closes 8h after job completion (safety)"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py, /app/frontend/app/chat/[id].tsx"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Backend adds CHAT_CLOSE_HOURS=8 and chat_close_info(convo) helper.
+            GET /api/conversations/{id}/messages now returns an object with
+            {messages, chat_closes_at, chat_is_closed, chat_close_hours}.
+            POST /api/conversations/{id}/messages rejects with 403 when
+            is_closed=true. Frontend chat screen displays a yellow countdown
+            banner when the job is completed but still within the 8h window,
+            and replaces the input with a dark "Chat is closed for safety"
+            bar when the window has expired (plus an inline notice within the
+            message list). History remains visible after close.
+        - working: false
+          agent: "testing"
+          comment: |
+            ❌ CRITICAL BLOCKING BUG in chat_close_info() timezone comparison.
+            Test harness: /app/backend_test_chat_close.py
+            Live backend: https://task-connect-81.preview.emergentagent.com/api
+            Two fresh real-looking users were registered + verified; a job
+            was created, accepted, messages sent, then completed.
+
+            RESULT — 12 passed / 11 failed. ALL 11 failures cascade from the
+            same single root-cause exception:
+
+              File "/app/backend/server.py", line 224, in chat_close_info
+                return {"closes_at": closes_at.isoformat(),
+                        "is_closed": now >= closes_at}
+              TypeError: can't compare offset-naive and offset-aware datetimes
+
+            ROOT CAUSE
+              • /api/jobs/{id}/complete writes
+                  completed_at = datetime.now(timezone.utc)  (tz-aware)
+              • Mongo stores BSON dates WITHOUT tz info. Motor, by default,
+                reads them back as NAIVE datetimes (tz_aware=False).
+              • chat_close_info then does
+                  closes_at = completed_at + timedelta(hours=8)   # naive
+                  now       = datetime.now(timezone.utc)          # aware
+                  now >= closes_at                                # TypeError
+              So EVERY GET/POST on /api/conversations/{id}/messages for a
+              COMPLETED job returns 500 Internal Server Error.
+
+            WHAT PASSES
+              ✅ Pre-completion (SCENARIO 1):
+                 • GET returns an OBJECT (not array) with the 4 expected keys
+                 • chat_close_hours == 8
+                 • chat_closes_at == null, chat_is_closed == false
+                 • POST message 200 (both directions)
+                 (These work because chat_close_info short-circuits before
+                  the TZ comparison when status != "completed".)
+              ✅ Non-completed jobs stay open (SCENARIO 5):
+                 • Accepted-but-not-completed: chat_is_closed=false,
+                   closes_at=null, POST 200
+                 • Cancelled (never completed): chat_is_closed=false,
+                   closes_at=null, POST 200
+              ✅ Auth boundary intact: non-participant POST still 403
+                 (rejected BEFORE the chat_close_info call).
+
+            WHAT FAILS (all 500 Internal Server Error)
+              ❌ SCENARIO 2 (just after complete, inside 8h window):
+                 GET messages → 500
+                 POST message → 500  (expected 200 + close_at set, is_closed=false)
+              ❌ SCENARIO 3 (completed_at patched 9h ago via Mongo):
+                 GET messages → 500  (expected is_closed=true)
+                 POST as poster → 500  (expected 403 "Chat closed 8 hours…")
+                 POST as worker → 500  (expected 403)
+                 History unreadable (same 500)
+              ⚠ SCENARIO 4 (admin reads closed chat) — UNVERIFIED because
+                 admin@quickgig.app / admin123 returns 401 (admin password
+                 was changed in a prior session; noted in
+                 /app/memory/test_credentials.md). This is UNRELATED to the
+                 chat-close bug but also blocked verification of the admin
+                 short-circuit in GET /messages.
+
+            MINIMAL FIX (main agent — please apply)
+              In /app/backend/server.py chat_close_info() (~line 219),
+              force tz-awareness after reading from Mongo, e.g.:
+
+                completed_at = job.get("completed_at")
+                if not isinstance(completed_at, datetime):
+                    return {"closes_at": None, "is_closed": False}
+                if completed_at.tzinfo is None:
+                    completed_at = completed_at.replace(tzinfo=timezone.utc)
+                closes_at = completed_at + timedelta(hours=CHAT_CLOSE_HOURS)
+                now = datetime.now(timezone.utc)
+                return {"closes_at": closes_at.isoformat(),
+                        "is_closed": now >= closes_at}
+
+              (Alternative: construct the motor client with tz_aware=True
+              globally, but that has wider blast radius — the inline patch
+              is safer.) After fix, re-run /app/backend_test_chat_close.py —
+              all 11 failures should become passes in one shot.
+
                               new            = created_at desc
                               pay            = pay_amount desc (boosted tiebreaker)
                               near           = distance_miles asc (requires lat/lng
@@ -305,18 +406,66 @@ frontend:
 
 metadata:
   created_by: "main_agent"
-  version: "1.2"
-  test_sequence: 2
+  version: "1.3"
+  test_sequence: 3
   run_ui: false
 
 test_plan:
   current_focus:
-    - "Enhanced GET /api/jobs filters (pay_type, min_pay, verified_only, sort)"
+    - "Chat auto-closes 8h after job completion (safety)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
+    - agent: "main"
+      message: |
+        Added a safety feature: conversations automatically close 8 hours after
+        the associated job is marked complete.
+
+        CHANGES:
+          • New constant CHAT_CLOSE_HOURS = 8 in /app/backend/server.py
+          • New helper `chat_close_info(convo)` returns
+            {closes_at: iso | None, is_closed: bool}
+            - closes_at = job.completed_at + 8h when job.status == "completed"
+            - is_closed = now >= closes_at
+            - Returns {None, False} for non-completed jobs (chat stays open)
+          • GET  /api/conversations/{id}/messages now returns an OBJECT (was array):
+              {
+                "messages": [...],
+                "chat_closes_at": iso | null,
+                "chat_is_closed": bool,
+                "chat_close_hours": 8
+              }
+          • POST /api/conversations/{id}/messages returns 403 with detail
+            "Chat closed 8 hours after job completion for safety" when is_closed=true.
+
+        PLEASE TEST:
+          1. Create a job with user A, have user B accept it (conversation is
+             auto-created).
+          2. Before completion: GET messages should return
+             chat_closes_at=null, chat_is_closed=false. POST a message works (200).
+          3. Mark the job complete (POST /jobs/{id}/complete).
+          4. Immediately after completion:
+             - chat_closes_at should be set (completed_at + 8h)
+             - chat_is_closed should be false
+             - POST a message still works (200) within the 8h window.
+          5. To test the closed state WITHOUT waiting 8h, directly patch the
+             job's completed_at in Mongo to 9 hours ago:
+               db.jobs.update_one({"id": job_id},
+                 {"$set": {"completed_at": datetime.now(timezone.utc)
+                                         - timedelta(hours=9)}})
+             Then:
+             - GET messages → chat_is_closed=true, chat_closes_at in the past.
+             - POST message → 403 with the safety detail.
+             - Reading messages still works (history preserved).
+          6. Non-completed jobs (status=open/cancelled) must keep chat_is_closed=false.
+          7. Admin should still be able to READ messages after close (admin access
+             check already permits role=admin in GET).
+
+        Do NOT test the frontend — will be verified in person by the user.
+        Do NOT re-test push / filter endpoints — they were verified already.
+
     - agent: "main"
       message: |
         Added 4 new query params to GET /api/jobs: pay_type, min_pay,
@@ -433,3 +582,57 @@ agent_communication:
         Do NOT test real push delivery — that requires a physical device. Focus
         purely on endpoint behaviour, auth, and that events do not break when
         notify_user() is called.
+
+
+    - agent: "testing"
+      message: |
+        ❌ CRITICAL blocker on "Chat auto-closes 8h after job completion".
+        Test harness at /app/backend_test_chat_close.py — 12 PASS / 11 FAIL
+        against the live backend. All 11 failures are the SAME root cause:
+
+          File "/app/backend/server.py", line 224, in chat_close_info
+            return {..., "is_closed": now >= closes_at}
+          TypeError: can't compare offset-naive and offset-aware datetimes
+
+        Why: /api/jobs/{id}/complete writes `completed_at = datetime.now(timezone.utc)`
+        (tz-aware). Mongo stores it as a BSON date, and motor reads it back
+        NAIVE by default. Then chat_close_info does
+            closes_at = completed_at + timedelta(hours=8)  # naive
+            now       = datetime.now(timezone.utc)         # aware
+            now >= closes_at                               # raises
+        So every GET and POST on /api/conversations/{id}/messages for a
+        COMPLETED job returns 500.
+
+        What works:
+          ✅ Pre-completion: GET returns object {messages, chat_closes_at=null,
+             chat_is_closed=false, chat_close_hours=8}; POST 200 both ways.
+          ✅ Non-completed jobs (open/cancelled) → chat stays open, POST 200.
+          ✅ Auth boundary intact (non-participant still 403 before the TZ code).
+
+        What breaks (all 500 instead of expected behaviour):
+          ❌ Right after /complete (within 8h): GET should return closes_at
+             set & is_closed=false; POST should return 200. Both → 500.
+          ❌ After patching completed_at to 9h ago via Mongo: GET should
+             return is_closed=true; POST should return 403 with
+             "Chat closed 8 hours after job completion for safety". Both → 500.
+          ❌ History unreadable for any completed-job chat (full blocker on
+             the feature; user-facing chat screen will throw too).
+
+        Unverified (not a chat-close bug): admin@quickgig.app / admin123
+        login still returns 401 (noted in /app/memory/test_credentials.md
+        from a prior session), so admin-read-after-close could not be
+        verified — please reseed admin separately if you want it checked.
+
+        MINIMAL FIX (inline, low blast radius) — in chat_close_info():
+          completed_at = job.get("completed_at")
+          if not isinstance(completed_at, datetime):
+              return {"closes_at": None, "is_closed": False}
+          if completed_at.tzinfo is None:
+              completed_at = completed_at.replace(tzinfo=timezone.utc)
+          closes_at = completed_at + timedelta(hours=CHAT_CLOSE_HOURS)
+          now = datetime.now(timezone.utc)
+          return {"closes_at": closes_at.isoformat(),
+                  "is_closed": now >= closes_at}
+
+        After the fix, just re-run /app/backend_test_chat_close.py —
+        all 11 failures should flip to pass in a single run.

@@ -201,6 +201,28 @@ class NotifSettingsIn(BaseModel):
 
 EXPO_PUSH_URL = "https://exp.host/--/api/v2/push/send"
 
+# Chat auto-closes this many hours after a job is marked complete (safety)
+CHAT_CLOSE_HOURS = 8
+
+
+async def chat_close_info(convo: dict) -> Dict[str, Any]:
+    """Return {closes_at, is_closed} for a conversation based on the job's
+    completed_at timestamp. Chat only ever closes for completed jobs."""
+    job_id = convo.get("job_id")
+    if not job_id:
+        return {"closes_at": None, "is_closed": False}
+    job = await db.jobs.find_one({"id": job_id}, {"_id": 0, "status": 1, "completed_at": 1})
+    if not job:
+        return {"closes_at": None, "is_closed": False}
+    if job.get("status") != "completed":
+        return {"closes_at": None, "is_closed": False}
+    completed_at = job.get("completed_at")
+    if not isinstance(completed_at, datetime):
+        return {"closes_at": None, "is_closed": False}
+    closes_at = completed_at + timedelta(hours=CHAT_CLOSE_HOURS)
+    now = datetime.now(timezone.utc)
+    return {"closes_at": closes_at.isoformat(), "is_closed": now >= closes_at}
+
 
 async def _send_expo_push(messages: List[Dict[str, Any]]):
     """POST to Expo push API. Never raises — logs on failure."""
@@ -717,16 +739,22 @@ async def get_messages(convo_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(status_code=403, detail="Not your conversation")
     cursor = db.messages.find({"conversation_id": convo_id}, {"_id": 0}).sort("created_at", 1)
     msgs = await cursor.to_list(1000)
-    return [
-        {
-            "id": m["id"],
-            "conversation_id": m["conversation_id"],
-            "sender_id": m["sender_id"],
-            "text": m["text"],
-            "created_at": m["created_at"].isoformat() if m.get("created_at") else None,
-        }
-        for m in msgs
-    ]
+    close = await chat_close_info(c)
+    return {
+        "messages": [
+            {
+                "id": m["id"],
+                "conversation_id": m["conversation_id"],
+                "sender_id": m["sender_id"],
+                "text": m["text"],
+                "created_at": m["created_at"].isoformat() if m.get("created_at") else None,
+            }
+            for m in msgs
+        ],
+        "chat_closes_at": close["closes_at"],
+        "chat_is_closed": close["is_closed"],
+        "chat_close_hours": CHAT_CLOSE_HOURS,
+    }
 
 
 @api_router.post("/conversations/{convo_id}/messages")
@@ -736,6 +764,13 @@ async def send_message(convo_id: str, data: MessageIn, user: dict = Depends(get_
         raise HTTPException(status_code=404, detail="Conversation not found")
     if user["id"] not in [c["poster_id"], c["worker_id"]]:
         raise HTTPException(status_code=403, detail="Not your conversation")
+    # Safety: chat auto-closes 8 hours after the job is marked complete
+    close = await chat_close_info(c)
+    if close["is_closed"]:
+        raise HTTPException(
+            status_code=403,
+            detail=f"Chat closed {CHAT_CLOSE_HOURS} hours after job completion for safety",
+        )
     msg = {
         "id": str(uuid.uuid4()),
         "conversation_id": convo_id,
