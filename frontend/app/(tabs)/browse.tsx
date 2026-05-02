@@ -191,14 +191,20 @@ export default function Browse() {
               </View>
               <TouchableOpacity
                 testID="view-toggle"
-                style={[styles.filterBtn, viewMode === "map" && styles.filterBtnActive]}
+                style={[styles.viewToggleBtn, viewMode === "map" && styles.viewToggleBtnActive]}
                 onPress={() => setViewMode(viewMode === "list" ? "map" : "list")}
                 activeOpacity={0.85}
               >
                 {viewMode === "list" ? (
-                  <MapIcon size={18} color={colors.text} strokeWidth={2.4} />
+                  <>
+                    <MapIcon size={18} color={colors.primary} strokeWidth={2.6} />
+                    <Text style={styles.viewToggleText}>Map</Text>
+                  </>
                 ) : (
-                  <List size={18} color="#fff" strokeWidth={2.4} />
+                  <>
+                    <List size={18} color="#fff" strokeWidth={2.8} />
+                    <Text style={[styles.viewToggleText, { color: "#fff" }]}>List</Text>
+                  </>
                 )}
               </TouchableOpacity>
               <TouchableOpacity
@@ -548,6 +554,23 @@ const styles = StyleSheet.create({
     ...(shadows.soft as object),
   },
   filterBtnActive: { backgroundColor: colors.primary },
+  viewToggleBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 12,
+    height: 52,
+    borderRadius: 16,
+    backgroundColor: "#fff",
+    gap: 6,
+    borderWidth: 2,
+    borderColor: colors.primary,
+    ...(shadows.soft as object),
+  },
+  viewToggleBtnActive: {
+    backgroundColor: colors.primary,
+    borderColor: colors.primary,
+  },
+  viewToggleText: { fontWeight: "800", fontSize: 13, color: colors.primary, letterSpacing: -0.2 },
   filterBadge: {
     position: "absolute",
     top: 4,

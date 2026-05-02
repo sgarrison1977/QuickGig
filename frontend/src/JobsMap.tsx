@@ -1,30 +1,10 @@
-import React, { useEffect, useMemo, useRef, useState } from "react";
-import {
-  View,
-  Text,
-  StyleSheet,
-  TouchableOpacity,
-  ActivityIndicator,
-  Platform,
-  Dimensions,
-} from "react-native";
+import React, { useMemo, useRef, useState } from "react";
+import { View, Text, StyleSheet, TouchableOpacity, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { MapPin, Star, ShieldCheck, ChevronRight, Crosshair } from "lucide-react-native";
+import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
 import { colors, shadows } from "./theme";
 import { categoryMeta } from "./api";
-
-// Stub for web — react-native-maps is not supported on web
-let MapView: any = null;
-let Marker: any = null;
-let PROVIDER_GOOGLE: any = undefined;
-if (Platform.OS !== "web") {
-  try {
-    const maps = require("react-native-maps");
-    MapView = maps.default;
-    Marker = maps.Marker;
-    PROVIDER_GOOGLE = maps.PROVIDER_GOOGLE;
-  } catch {}
-}
 
 type Job = {
   id: string;
@@ -96,19 +76,6 @@ export function JobsMap({ jobs, coords }: Props) {
     }
   };
 
-  // Web fallback — react-native-maps doesn't support web
-  if (Platform.OS === "web" || !MapView) {
-    return (
-      <View style={styles.webFallback} testID="map-web-fallback">
-        <MapPin size={48} color={colors.primary} strokeWidth={2.2} />
-        <Text style={styles.webTitle}>Map view is mobile-only</Text>
-        <Text style={styles.webSub}>
-          Open QuickGig on your phone to see jobs on a map. The list view works everywhere.
-        </Text>
-      </View>
-    );
-  }
-
   return (
     <View style={styles.wrap} testID="jobs-map">
       <MapView
@@ -122,7 +89,6 @@ export function JobsMap({ jobs, coords }: Props) {
         provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
       >
         {validJobs.map((j) => {
-          const cat = categoryMeta(j.category);
           const isSel = j.id === selectedId;
           return (
             <Marker
@@ -132,21 +98,30 @@ export function JobsMap({ jobs, coords }: Props) {
               tracksViewChanges={false}
               anchor={{ x: 0.5, y: 1 }}
             >
-              <View
-                style={[
-                  styles.marker,
-                  { backgroundColor: isSel ? colors.text : colors.primary },
-                  j.is_boosted ? { borderWidth: 2, borderColor: colors.yellow } : null,
-                ]}
-              >
-                <Text style={styles.markerText} numberOfLines={1}>
-                  ${j.pay_amount}
-                  {j.pay_type === "hourly" ? "/hr" : ""}
-                </Text>
+              <View style={styles.markerOuter}>
+                <View
+                  style={[
+                    styles.marker,
+                    { backgroundColor: isSel ? colors.text : colors.primary },
+                    j.is_boosted ? styles.markerBoosted : null,
+                    isSel ? styles.markerSelected : null,
+                  ]}
+                >
+                  <Text style={styles.markerText} numberOfLines={1}>
+                    ${j.pay_amount}
+                    {j.pay_type === "hourly" ? "/hr" : ""}
+                  </Text>
+                </View>
                 <View
                   style={[
                     styles.markerTail,
                     { borderTopColor: isSel ? colors.text : colors.primary },
+                  ]}
+                />
+                <View
+                  style={[
+                    styles.markerDot,
+                    { backgroundColor: isSel ? colors.text : colors.primary },
                   ]}
                 />
               </View>
@@ -155,7 +130,6 @@ export function JobsMap({ jobs, coords }: Props) {
         })}
       </MapView>
 
-      {/* Recenter button */}
       {coords ? (
         <TouchableOpacity
           testID="map-recenter"
@@ -167,14 +141,12 @@ export function JobsMap({ jobs, coords }: Props) {
         </TouchableOpacity>
       ) : null}
 
-      {/* Count pill */}
       <View style={styles.countPill} testID="map-count">
         <Text style={styles.countPillText}>
           {validJobs.length} {validJobs.length === 1 ? "job" : "jobs"}
         </Text>
       </View>
 
-      {/* Selected job preview card */}
       {selected ? (
         <TouchableOpacity
           testID={`map-preview-${selected.id}`}
@@ -183,10 +155,13 @@ export function JobsMap({ jobs, coords }: Props) {
           onPress={() => router.push(`/job/${selected.id}`)}
         >
           <View style={styles.previewRow}>
-            <View style={[styles.previewCat, { backgroundColor: categoryMeta(selected.category).color }]}>
-              <Text style={styles.previewCatText}>
-                {categoryMeta(selected.category).emoji}
-              </Text>
+            <View
+              style={[
+                styles.previewCat,
+                { backgroundColor: categoryMeta(selected.category).color },
+              ]}
+            >
+              <Text style={styles.previewCatText}>{categoryMeta(selected.category).emoji}</Text>
             </View>
             <View style={{ flex: 1 }}>
               <Text style={styles.previewTitle} numberOfLines={1}>
@@ -201,7 +176,12 @@ export function JobsMap({ jobs, coords }: Props) {
                 ) : null}
                 {selected.poster?.is_verified ? (
                   <View style={styles.previewMeta}>
-                    <ShieldCheck size={11} color={colors.verified} strokeWidth={2.4} fill={colors.verified} />
+                    <ShieldCheck
+                      size={11}
+                      color={colors.verified}
+                      strokeWidth={2.4}
+                      fill={colors.verified}
+                    />
                     <Text style={styles.previewMetaText}>Verified</Text>
                   </View>
                 ) : null}
@@ -241,23 +221,59 @@ export function JobsMap({ jobs, coords }: Props) {
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.surfaceAlt },
 
+  // Marker — bigger, bolder, glanceable from across the screen
+  markerOuter: { alignItems: "center", paddingBottom: 4 },
   marker: {
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    borderRadius: 14,
+    paddingHorizontal: 14,
+    paddingVertical: 9,
+    borderRadius: 18,
+    minWidth: 64,
     alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 3,
+    borderColor: "#fff",
+    // platform shadow
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.35,
+    shadowRadius: 4,
+    elevation: 8,
   },
-  markerText: { color: "#fff", fontWeight: "800", fontSize: 12.5, letterSpacing: -0.1 },
+  markerSelected: {
+    transform: [{ scale: 1.12 }],
+    borderColor: colors.yellow,
+    borderWidth: 3,
+  },
+  markerBoosted: {
+    borderColor: colors.yellow,
+    borderWidth: 3,
+  },
+  markerText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 14,
+    letterSpacing: -0.2,
+    textShadowColor: "rgba(0,0,0,0.35)",
+    textShadowOffset: { width: 0, height: 1 },
+    textShadowRadius: 2,
+  },
   markerTail: {
-    position: "absolute",
-    bottom: -6,
     width: 0,
     height: 0,
-    borderLeftWidth: 6,
-    borderRightWidth: 6,
-    borderTopWidth: 7,
+    borderLeftWidth: 8,
+    borderRightWidth: 8,
+    borderTopWidth: 10,
     borderLeftColor: "transparent",
     borderRightColor: "transparent",
+    marginTop: -2,
+  },
+  markerDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    marginTop: 2,
+    borderWidth: 2,
+    borderColor: "#fff",
   },
 
   recenterBtn: {
@@ -328,21 +344,4 @@ const styles = StyleSheet.create({
   },
   emptyTitle: { fontWeight: "800", color: colors.text, fontSize: 14, textAlign: "center" },
   emptySub: { color: colors.textSecondary, fontSize: 12, marginTop: 3, textAlign: "center" },
-
-  webFallback: {
-    flex: 1,
-    alignItems: "center",
-    justifyContent: "center",
-    gap: 12,
-    padding: 32,
-  },
-  webTitle: { fontSize: 18, fontWeight: "800", color: colors.text, letterSpacing: -0.3 },
-  webSub: {
-    fontSize: 13.5,
-    color: colors.textSecondary,
-    fontWeight: "500",
-    textAlign: "center",
-    lineHeight: 19,
-    maxWidth: 300,
-  },
 });
