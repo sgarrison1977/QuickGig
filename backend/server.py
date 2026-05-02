@@ -219,6 +219,9 @@ async def chat_close_info(convo: dict) -> Dict[str, Any]:
     completed_at = job.get("completed_at")
     if not isinstance(completed_at, datetime):
         return {"closes_at": None, "is_closed": False}
+    # Motor returns naive datetimes from Mongo — force UTC-aware for comparison
+    if completed_at.tzinfo is None:
+        completed_at = completed_at.replace(tzinfo=timezone.utc)
     closes_at = completed_at + timedelta(hours=CHAT_CLOSE_HOURS)
     now = datetime.now(timezone.utc)
     return {"closes_at": closes_at.isoformat(), "is_closed": now >= closes_at}
