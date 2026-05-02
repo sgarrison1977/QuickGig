@@ -2,7 +2,7 @@ import React, { useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity, Platform } from "react-native";
 import { useRouter } from "expo-router";
 import { MapPin, Star, ShieldCheck, ChevronRight, Crosshair } from "lucide-react-native";
-import MapView, { Marker, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, Callout, PROVIDER_GOOGLE } from "react-native-maps";
 import { colors, shadows } from "./theme";
 import { categoryMeta } from "./api";
 
@@ -98,28 +98,22 @@ export function JobsMap({ jobs, coords }: Props) {
       >
         {validJobs.map((j) => {
           const isSel = j.id === selectedId;
+          const priceLabel = `$${j.pay_amount}${j.pay_type === "hourly" ? "/hr" : ""}`;
+          // Use the native pin: it's a single bitmap, always renders, never clipped.
+          // We tint it with `pinColor` (coral for normal, dark for selected, yellow for boosted).
+          let pinColor = colors.primary;
+          if (isSel) pinColor = colors.text;
+          else if (j.is_boosted) pinColor = colors.yellow;
           return (
             <Marker
               key={j.id}
+              identifier={j.id}
               coordinate={{ latitude: j.latitude, longitude: j.longitude }}
               onPress={() => setSelectedId(j.id)}
-              tracksViewChanges={true}
-              anchor={{ x: 0.5, y: 0.5 }}
-            >
-              <View
-                style={[
-                  styles.marker,
-                  { backgroundColor: isSel ? colors.text : colors.primary },
-                  j.is_boosted ? styles.markerBoosted : null,
-                  isSel ? styles.markerSelected : null,
-                ]}
-              >
-                <Text style={styles.markerText} numberOfLines={1} allowFontScaling={false}>
-                  ${j.pay_amount}
-                  {j.pay_type === "hourly" ? "/hr" : ""}
-                </Text>
-              </View>
-            </Marker>
+              pinColor={pinColor}
+              title={priceLabel}
+              description={j.title}
+            />
           );
         })}
       </MapView>
