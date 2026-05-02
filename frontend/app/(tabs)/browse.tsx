@@ -411,11 +411,27 @@ function hex2rgba(hex: string, a: number) {
 
 export function JobCard({ job, onPress }: any) {
   const cat = categoryMeta(job.category);
+  const photos: string[] = Array.isArray(job.photos) ? job.photos : [];
   return (
     <TouchableOpacity testID={`job-card-${job.id}`} onPress={onPress} activeOpacity={0.9} style={styles.jobCard}>
       {job.is_boosted ? (
         <View style={styles.boostedRibbon}>
           <Text style={styles.boostedRibbonText}>🚀  BOOSTED</Text>
+        </View>
+      ) : null}
+      {photos.length > 0 ? (
+        <View style={styles.photoPreview}>
+          <ImageBackground
+            source={{ uri: photos[0] }}
+            style={styles.photoPreviewImg}
+            imageStyle={{ borderRadius: 14 }}
+          >
+            {photos.length > 1 ? (
+              <View style={styles.photoCountBadge}>
+                <Text style={styles.photoCountText}>+{photos.length - 1}</Text>
+              </View>
+            ) : null}
+          </ImageBackground>
         </View>
       ) : null}
       <View style={styles.cardHead}>
@@ -629,6 +645,26 @@ const styles = StyleSheet.create({
     marginBottom: 2,
   },
   boostedRibbonText: { color: "#fff", fontWeight: "800", fontSize: 10, letterSpacing: 0.8 },
+  photoPreview: {
+    marginBottom: 12,
+    borderRadius: 14,
+    overflow: "hidden",
+    backgroundColor: colors.surfaceAlt,
+  },
+  photoPreviewImg: {
+    width: "100%",
+    height: 160,
+    justifyContent: "flex-end",
+    alignItems: "flex-end",
+    padding: 10,
+  },
+  photoCountBadge: {
+    backgroundColor: "rgba(0,0,0,0.65)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 999,
+  },
+  photoCountText: { color: "#fff", fontWeight: "800", fontSize: 12 },
   cardHead: { flexDirection: "row", justifyContent: "space-between", alignItems: "center" },
   catTag: {
     borderRadius: 999,

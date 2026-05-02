@@ -92,19 +92,37 @@ export default function PostJob() {
     return;
   };
 
-  const addPhoto = async () => {
+  const addPhoto = async (fromCamera: boolean = false) => {
     if (photos.length >= 4) return;
-    const perm = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    const perm = fromCamera
+      ? await ImagePicker.requestCameraPermissionsAsync()
+      : await ImagePicker.requestMediaLibraryPermissionsAsync();
     if (!perm.granted) return;
-    const r = await ImagePicker.launchImageLibraryAsync({
+    const opts: ImagePicker.ImagePickerOptions = {
       mediaTypes: ["images"],
       base64: true,
       quality: 0.5,
       allowsEditing: true,
-    });
+    };
+    const r = fromCamera
+      ? await ImagePicker.launchCameraAsync(opts)
+      : await ImagePicker.launchImageLibraryAsync(opts);
     if (!r.canceled && r.assets[0]?.base64) {
       setPhotos((p) => [...p, `data:image/jpeg;base64,${r.assets[0].base64}`]);
     }
+  };
+
+  const pickPhoto = () => {
+    Alert.alert(
+      "Add a photo",
+      undefined,
+      [
+        { text: "Take photo", onPress: () => addPhoto(true) },
+        { text: "Choose from library", onPress: () => addPhoto(false) },
+        { text: "Cancel", style: "cancel" },
+      ],
+      { cancelable: true }
+    );
   };
 
   const submit = async () => {
@@ -313,7 +331,7 @@ export default function PostJob() {
               </View>
             ))}
             {photos.length < 4 ? (
-              <TouchableOpacity testID="add-photo" style={styles.photoAdd} onPress={addPhoto}>
+              <TouchableOpacity testID="add-photo" style={styles.photoAdd} onPress={pickPhoto}>
                 <Plus size={20} color="#000" strokeWidth={2.5} />
               </TouchableOpacity>
             ) : null}
