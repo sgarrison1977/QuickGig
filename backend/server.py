@@ -131,11 +131,16 @@ async def get_admin_user(user: dict = Depends(get_current_user)) -> dict:
 
 # ============ MODELS ============
 
+CURRENT_EULA_VERSION = "1.0"
+
+
 class RegisterIn(BaseModel):
     email: EmailStr
     password: str = Field(min_length=6)
     name: str = Field(min_length=1)
     phone: Optional[str] = None
+    eula_accepted: bool = False
+    eula_version: Optional[str] = None
 
 
 class LoginIn(BaseModel):
@@ -305,6 +310,11 @@ async def notify_user(
 
 @api_router.post("/auth/register")
 async def register(data: RegisterIn):
+    if not data.eula_accepted:
+        raise HTTPException(
+            status_code=400,
+            detail="You must accept the End User License Agreement to create an account.",
+        )
     email = data.email.lower().strip()
     existing = await db.users.find_one({"email": email})
     if existing:
@@ -326,6 +336,8 @@ async def register(data: RegisterIn):
         "rating_count": 0,
         "jobs_completed": 0,
         "created_at": datetime.now(timezone.utc),
+        "eula_accepted_at": datetime.now(timezone.utc),
+        "eula_version": data.eula_version or CURRENT_EULA_VERSION,
     }
     await db.users.insert_one(user_doc)
     token = create_access_token(user_id, email, "user")

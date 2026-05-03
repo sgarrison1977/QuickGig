@@ -24,7 +24,13 @@ export type User = {
 type AuthState = {
   user: User | null | undefined; // undefined = loading
   signIn: (email: string, password: string) => Promise<User>;
-  signUp: (email: string, password: string, name: string, phone?: string) => Promise<User>;
+  signUp: (
+    email: string,
+    password: string,
+    name: string,
+    phone?: string,
+    eula?: { accepted: boolean; version: string }
+  ) => Promise<User>;
   signOut: () => Promise<void>;
   refresh: () => Promise<void>;
   setUser: (u: User) => void;
@@ -73,10 +79,23 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     return res.user;
   };
 
-  const signUp = async (email: string, password: string, name: string, phone?: string) => {
+  const signUp = async (
+    email: string,
+    password: string,
+    name: string,
+    phone?: string,
+    eula?: { accepted: boolean; version: string }
+  ) => {
     const res = await api<{ token: string; user: User }>("/auth/register", {
       method: "POST",
-      body: { email, password, name, phone },
+      body: {
+        email,
+        password,
+        name,
+        phone,
+        eula_accepted: !!eula?.accepted,
+        eula_version: eula?.version,
+      },
       auth: false,
     });
     await setToken(res.token);

@@ -936,6 +936,28 @@ agent_communication:
 
     - agent: "testing"
       message: |
+        EULA-enforcement regression test on /api/auth/register — 5/5 PASS
+        against live backend (https://task-connect-81.preview.emergentagent.com/api):
+          ✅ POST /auth/register WITHOUT eula_accepted → 400
+             detail = "You must accept the End User License Agreement to
+             create an account."
+          ✅ POST /auth/register WITH eula_accepted=false → 400 (same detail)
+          ✅ POST /auth/register WITH eula_accepted=true and
+             eula_version="1.0" → 200, returns {token, user} in expected
+             shape (token len 261, user.id is a UUID, role=user).
+             Mongo doc verified directly: eula_accepted_at=datetime(2026-05-03)
+             and eula_version="1.0" persisted on the new user.
+          ✅ /auth/login with admin@quickgig.app / admin123 → 200 (token + user,
+             role=admin). Confirms login path untouched.
+          ✅ /auth/me with the JWT from the EULA-accepted register → 200,
+             returns the same user (id matches).
+          ✅ Spot-check GET /api/jobs?category=all&status=open&sort=best → 200,
+             3 jobs returned. Filter pipeline still works.
+        No 5xx, no exceptions in backend logs. Regression is clean — main
+        agent can ship.
+
+    - agent: "testing"
+      message: |
         Stripe Checkout integration tested — 15/16 PASS, 1 CRITICAL FAIL.
         Test harness: /app/backend_test.py  (pymongo + httpx, hits live
         backend at https://task-connect-81.preview.emergentagent.com/api).
