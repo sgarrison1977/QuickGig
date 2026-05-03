@@ -1064,13 +1064,16 @@ STRIPE_PACKAGES = {
 
 
 def _stripe_client(http_request: Request):
+    """Returns the official stripe-python module configured with our API key,
+    pointed at the real Stripe API. We explicitly reset api_base because the
+    emergentintegrations module overrides it to a proxy that 404s on retrieve."""
     api_key = os.environ.get("STRIPE_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="Stripe not configured")
-    from emergentintegrations.payments.stripe.checkout import StripeCheckout  # type: ignore
-    host_url = str(http_request.base_url).rstrip("/")
-    webhook_url = f"{host_url}/api/webhook/stripe"
-    return StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+    import stripe  # type: ignore
+    stripe.api_key = api_key
+    stripe.api_base = "https://api.stripe.com"
+    return stripe
 
 
 class CheckoutIn(BaseModel):
@@ -1109,25 +1112,34 @@ async def create_checkout(
     success_url = f"{origin}/billing/return?session_id={{CHECKOUT_SESSION_ID}}"
     cancel_url = f"{origin}/billing/cancel?package={data.package_id}"
 
-    from emergentintegrations.payments.stripe.checkout import (  # type: ignore
-        CheckoutSessionRequest,
-    )
-
-    sc = _stripe_client(http_request)
-    req = CheckoutSessionRequest(
-        amount=float(pkg["amount"]),
-        currency="usd",
-        success_url=success_url,
-        cancel_url=cancel_url,
-        metadata=metadata,
-    )
-    session = await sc.create_checkout_session(req)
+    stripe = _stripe_client(http_request)
+    try:
+        session = stripe.checkout.Session.create(
+            mode="payment",
+            payment_method_types=["card"],
+            line_items=[
+                {
+                    "price_data": {
+                        "currency": "usd",
+                        "product_data": {"name": pkg["label"]},
+                        "unit_amount": int(round(float(pkg["amount"]) * 100)),
+                    },
+                    "quantity": 1,
+                }
+            ],
+            success_url=success_url,
+            cancel_url=cancel_url,
+            metadata=metadata,
+        )
+    except Exception as e:
+        logging.warning(f"Stripe session create failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {str(e)[:200]}")
 
     # Record the transaction (status: initiated) BEFORE returning the URL
     await db.payment_transactions.insert_one(
         {
             "id": str(uuid.uuid4()),
-            "session_id": session.session_id,
+            "session_id": session.id,
             "user_id": user["id"],
             "package_id": data.package_id,
             "kind": pkg["kind"],
@@ -1141,7 +1153,7 @@ async def create_checkout(
             "updated_at": datetime.now(timezone.utc),
         }
     )
-    return {"url": session.url, "session_id": session.session_id}
+    return {"url": session.url, "session_id": session.id}
 
 
 async def _credit_transaction_if_paid(session_id: str, http_request: Request) -> Dict[str, Any]:
