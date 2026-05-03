@@ -1203,6 +1203,11 @@ async def _credit_transaction_if_paid(session_id: str, http_request: Request) ->
         "updated_at": datetime.now(timezone.utc),
     }
 
+    # Capture payment_intent so we can later find this txn on refund webhooks
+    pi = (sess.get("payment_intent") if hasattr(sess, "get") else getattr(sess, "payment_intent", None))
+    if pi and not txn.get("payment_intent"):
+        update["payment_intent"] = pi
+
     if s_payment_status == "paid" and not txn.get("credited"):
         kind = txn.get("kind")
         meta = txn.get("metadata") or {}
@@ -1264,6 +1269,68 @@ async def checkout_status(
     return await _credit_transaction_if_paid(session_id, http_request)
 
 
+async def _revoke_transaction(txn: Dict[str, Any]) -> None:
+    """Reverse a previously-credited transaction (called on refund)."""
+    if not txn or not txn.get("credited"):
+        return
+    kind = txn.get("kind")
+    meta = txn.get("metadata") or {}
+    user_id = meta.get("user_id")
+    amount = float(txn.get("amount", 0) or 0)
+    if kind == "pro" and user_id:
+        # Subtract 30 days from pro_expires_at; if it goes into the past, revoke is_pro
+        u = await db.users.find_one({"id": user_id}, {"_id": 0, "pro_expires_at": 1})
+        cur = u.get("pro_expires_at") if u else None
+        now = datetime.now(timezone.utc)
+        if isinstance(cur, datetime):
+            if cur.tzinfo is None:
+                cur = cur.replace(tzinfo=timezone.utc)
+            new_exp = cur - timedelta(days=30)
+        else:
+            new_exp = now - timedelta(days=1)
+        if new_exp <= now:
+            await db.users.update_one(
+                {"id": user_id},
+                {"$set": {"is_pro": False, "pro_expires_at": None}},
+            )
+        else:
+            await db.users.update_one(
+                {"id": user_id}, {"$set": {"pro_expires_at": new_exp}}
+            )
+    elif kind == "bg" and user_id:
+        await db.users.update_one(
+            {"id": user_id}, {"$set": {"has_background_check": False}}
+        )
+    elif kind == "boost":
+        job_id = meta.get("job_id")
+        hours = int(meta.get("hours") or 24)
+        if job_id:
+            j = await db.jobs.find_one({"id": job_id}, {"_id": 0, "boosted_until": 1})
+            cur = j.get("boosted_until") if j else None
+            if isinstance(cur, datetime):
+                if cur.tzinfo is None:
+                    cur = cur.replace(tzinfo=timezone.utc)
+                new_until = cur - timedelta(hours=hours)
+            else:
+                new_until = datetime.now(timezone.utc) - timedelta(hours=1)
+            await db.jobs.update_one(
+                {"id": job_id}, {"$set": {"boosted_until": new_until}}
+            )
+    await db.payment_transactions.update_one(
+        {"id": txn["id"]},
+        {
+            "$set": {
+                "credited": False,
+                "refunded": True,
+                "refunded_amount": amount,
+                "refunded_at": datetime.now(timezone.utc),
+                "updated_at": datetime.now(timezone.utc),
+            }
+        },
+    )
+    logging.info(f"Revoked txn {txn.get('id')} kind={kind} for user={user_id}")
+
+
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(http_request: Request):
     """Verifies Stripe-Signature and reacts to checkout.session.* events
@@ -1312,8 +1379,20 @@ async def stripe_webhook(http_request: Request):
                 )
         except Exception:
             pass
+    elif etype in ("charge.refunded", "charge.refund.updated"):
+        # Auto-revoke Pro / BG / Boost when a charge is refunded
+        try:
+            obj = event["data"]["object"]
+            pi = obj.get("payment_intent") if hasattr(obj, "get") else getattr(obj, "payment_intent", None)
+            if pi:
+                txn = await db.payment_transactions.find_one(
+                    {"payment_intent": pi}, {"_id": 0}
+                )
+                if txn:
+                    await _revoke_transaction(txn)
+        except Exception as e:
+            logging.warning(f"Refund webhook error: {e}")
     elif etype and etype.startswith("identity.verification_session."):
-        # Real ID verification via Stripe Identity
         try:
             obj = event["data"]["object"]
             vs_id = obj.get("id") if hasattr(obj, "get") else getattr(obj, "id", None)
