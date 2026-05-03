@@ -61,7 +61,7 @@ export default function RootLayout() {
             <Stack.Screen name="index" />
             <Stack.Screen name="(auth)" />
             <Stack.Screen name="(tabs)" />
-            <Stack.Screen name="verify-id" />
+
             <Stack.Screen name="job/[id]" />
             <Stack.Screen name="chat/[id]" />
             <Stack.Screen name="review/[jobId]" />

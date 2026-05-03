@@ -38,37 +38,6 @@ export default function PostJob() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
-  if (user && !user.is_verified) {
-    return (
-      <SafeAreaView style={styles.safe} edges={["top"]}>
-        <ScrollView contentContainerStyle={styles.gateScroll}>
-          <Image
-            source={{ uri: "https://images.unsplash.com/photo-1556761175-5973dc0f32e7?auto=format&fit=crop&w=900&q=70" }}
-            style={styles.gateHero}
-          />
-          <View style={styles.gateBox}>
-            <View style={styles.gateIcon}>
-              <ShieldAlert size={32} color={colors.primary} strokeWidth={2.4} />
-            </View>
-            <Text style={styles.h1}>Verify your ID first</Text>
-            <Text style={styles.muted}>
-              For everyone&apos;s safety, both posters and workers verify their identity before posting or accepting jobs. It only takes a minute.
-            </Text>
-            <TouchableOpacity
-              testID="goto-verify"
-              style={[brutal.buttonPrimary, { width: "100%" }]}
-              onPress={() => router.push("/verify-id")}
-              activeOpacity={0.9}
-            >
-              <ShieldCheck size={18} color="#fff" strokeWidth={2.6} />
-              <Text style={brutal.buttonText}>Verify Now</Text>
-            </TouchableOpacity>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    );
-  }
-
   const useMyLocation = async () => {
     const { status } = await Location.requestForegroundPermissionsAsync();
     if (status !== "granted") {

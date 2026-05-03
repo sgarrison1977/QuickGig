@@ -156,7 +156,7 @@ export default function JobDetail() {
   const cat = categoryMeta(job.category);
   const isPoster = user?.id === job.poster_id;
   const isWorker = user?.id === job.worker_id;
-  const canAccept = job.status === "open" && !isPoster && user?.is_verified;
+  const canAccept = job.status === "open" && !isPoster;
   // Only POSTER can mark complete
   const canComplete = job.status === "accepted" && isPoster;
   // Only WORKER can withdraw
@@ -283,11 +283,7 @@ export default function JobDetail() {
               <Text style={brutal.buttonText}>{busy ? "Accepting..." : "Accept Job"}</Text>
             </TouchableOpacity>
           ) : null}
-          {job.status === "open" && !isPoster && user && !user.is_verified ? (
-            <TouchableOpacity style={brutal.buttonSecondary} onPress={() => router.push("/verify-id")}>
-              <Text style={brutal.buttonText}>Verify ID to Accept</Text>
-            </TouchableOpacity>
-          ) : null}
+          {job.status === "open" && !isPoster && user && !user.is_verified ? null : null}
 
           {(isPoster || isWorker) && (job.status === "accepted" || job.status === "completed") ? (
             <TouchableOpacity testID="open-chat-btn" style={brutal.buttonSecondary} onPress={openChat}>

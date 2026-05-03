@@ -474,8 +474,6 @@ def public_job(j: dict, poster: Optional[dict] = None, worker: Optional[dict] = 
 
 @api_router.post("/jobs")
 async def create_job(data: JobIn, user: dict = Depends(get_current_user)):
-    if not user.get("is_verified"):
-        raise HTTPException(status_code=403, detail="Please verify your ID before posting jobs")
     job_id = str(uuid.uuid4())
     doc = {
         "id": job_id,
@@ -645,8 +643,6 @@ async def get_job(job_id: str):
 
 @api_router.post("/jobs/{job_id}/accept")
 async def accept_job(job_id: str, user: dict = Depends(get_current_user)):
-    if not user.get("is_verified"):
-        raise HTTPException(status_code=403, detail="Verify your ID before accepting jobs")
     j = await db.jobs.find_one({"id": job_id}, {"_id": 0})
     if not j:
         raise HTTPException(status_code=404, detail="Job not found")

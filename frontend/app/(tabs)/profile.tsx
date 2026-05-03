@@ -172,17 +172,6 @@ export default function Profile() {
                     <Text style={styles.verText}>BG✓</Text>
                   </View>
                 ) : null}
-                {user.is_verified ? (
-                  <View style={styles.ver}>
-                    <ShieldCheck size={11} color="#fff" strokeWidth={3} />
-                    <Text style={styles.verText}>VERIFIED</Text>
-                  </View>
-                ) : (
-                  <View style={[styles.ver, { backgroundColor: "rgba(255,255,255,0.25)" }]}>
-                    <ShieldAlert size={11} color="#fff" strokeWidth={3} />
-                    <Text style={styles.verText}>UNVERIFIED</Text>
-                  </View>
-                )}
               </View>
               <Text style={styles.email} numberOfLines={1}>{user.email}</Text>
               <View style={styles.statsRow}>
@@ -204,17 +193,7 @@ export default function Profile() {
           </View>
         </LinearGradient>
 
-        {!user.is_verified ? (
-          <TouchableOpacity
-            testID="verify-cta"
-            style={brutal.buttonPrimary}
-            onPress={() => router.push("/verify-id")}
-            activeOpacity={0.9}
-          >
-            <ShieldCheck size={18} color="#fff" strokeWidth={2.6} />
-            <Text style={brutal.buttonText}>Verify Your ID</Text>
-          </TouchableOpacity>
-        ) : null}
+        {!user.is_verified ? null : null}
 
         {/* Upgrade CTAs - always visible & prominent */}
         <View style={styles.upgradeRow}>
