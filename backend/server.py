@@ -1266,8 +1266,8 @@ async def checkout_status(
 
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(http_request: Request):
-    """Verifies Stripe-Signature with our webhook secret and credits the
-    relevant transaction when checkout.session.completed fires."""
+    """Verifies Stripe-Signature and reacts to checkout.session.* events
+    plus identity.verification_session.* events (real ID verification)."""
     sig = http_request.headers.get("Stripe-Signature") or http_request.headers.get(
         "stripe-signature"
     )
@@ -1286,7 +1286,6 @@ async def stripe_webhook(http_request: Request):
         logging.warning(f"Stripe webhook signature failed: {e}")
         raise HTTPException(status_code=400, detail="Invalid signature")
 
-    # Only act on completed/expired checkout sessions
     etype = event.get("type") if hasattr(event, "get") else getattr(event, "type", None)
     if etype in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
         try:
@@ -1313,7 +1312,111 @@ async def stripe_webhook(http_request: Request):
                 )
         except Exception:
             pass
+    elif etype and etype.startswith("identity.verification_session."):
+        # Real ID verification via Stripe Identity
+        try:
+            obj = event["data"]["object"]
+            vs_id = obj.get("id") if hasattr(obj, "get") else getattr(obj, "id", None)
+            vs_status = obj.get("status") if hasattr(obj, "get") else getattr(obj, "status", None)
+            meta = obj.get("metadata") if hasattr(obj, "get") else getattr(obj, "metadata", None) or {}
+            user_id = meta.get("user_id") if isinstance(meta, dict) else None
+            if vs_id:
+                await db.id_verifications.update_one(
+                    {"session_id": vs_id},
+                    {
+                        "$set": {
+                            "status": vs_status,
+                            "updated_at": datetime.now(timezone.utc),
+                        }
+                    },
+                )
+            if vs_status == "verified" and user_id:
+                await db.users.update_one(
+                    {"id": user_id},
+                    {"$set": {"is_verified": True, "id_verified_at": datetime.now(timezone.utc)}},
+                )
+        except Exception as e:
+            logging.warning(f"Identity webhook error: {e}")
     return {"received": True}
+
+
+# ============ STRIPE IDENTITY (Real ID Verification) ============
+
+class IdVerifyStartIn(BaseModel):
+    return_url: Optional[str] = None  # frontend origin, used for return_url on the hosted flow
+
+
+@api_router.post("/verify/id/start")
+async def start_id_verification(
+    data: IdVerifyStartIn,
+    http_request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """Creates a Stripe Identity VerificationSession and returns a hosted URL.
+    Pricing: $1.50 per verification billed automatically to your Stripe account."""
+    if user.get("is_verified"):
+        return {"already_verified": True}
+    stripe = _stripe_client(http_request)
+    return_origin = (data.return_url or "").rstrip("/")
+    try:
+        kwargs: Dict[str, Any] = {
+            "type": "document",
+            "metadata": {"user_id": user["id"]},
+            "options": {
+                "document": {
+                    "allowed_types": ["driving_license", "passport", "id_card"],
+                    "require_matching_selfie": True,
+                    "require_live_capture": True,
+                }
+            },
+        }
+        if return_origin:
+            kwargs["return_url"] = f"{return_origin}/verify-id/return?vs={{VERIFICATION_SESSION_ID}}"
+        vs = stripe.identity.VerificationSession.create(**kwargs)
+    except Exception as e:
+        logging.warning(f"Stripe Identity create failed: {e}")
+        raise HTTPException(status_code=502, detail=f"Stripe error: {str(e)[:200]}")
+
+    await db.id_verifications.insert_one(
+        {
+            "id": str(uuid.uuid4()),
+            "session_id": vs.id,
+            "user_id": user["id"],
+            "status": vs.status,
+            "client_secret": vs.client_secret,
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+        }
+    )
+    return {"url": vs.url, "session_id": vs.id, "client_secret": vs.client_secret, "status": vs.status}
+
+
+@api_router.get("/verify/id/status/{session_id}")
+async def get_id_verification_status(
+    session_id: str, http_request: Request, user: dict = Depends(get_current_user)
+):
+    rec = await db.id_verifications.find_one({"session_id": session_id}, {"_id": 0})
+    if not rec or rec.get("user_id") != user["id"]:
+        raise HTTPException(status_code=404, detail="Verification not found")
+    stripe = _stripe_client(http_request)
+    try:
+        vs = stripe.identity.VerificationSession.retrieve(session_id)
+        st = vs.status
+    except Exception as e:
+        logging.warning(f"Identity retrieve failed: {e}")
+        st = rec.get("status", "requires_input")
+
+    if st != rec.get("status"):
+        await db.id_verifications.update_one(
+            {"session_id": session_id},
+            {"$set": {"status": st, "updated_at": datetime.now(timezone.utc)}},
+        )
+    if st == "verified":
+        await db.users.update_one(
+            {"id": user["id"]},
+            {"$set": {"is_verified": True, "id_verified_at": datetime.now(timezone.utc)}},
+        )
+    return {"session_id": session_id, "status": st, "verified": st == "verified"}
 
 
 # ============ SEED + STARTUP ============
