@@ -1,8 +1,8 @@
 import React, { useMemo, useRef, useState } from "react";
-import { View, Text, StyleSheet, TouchableOpacity, Platform } from "react-native";
+import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { MapPin, Star, ShieldCheck, ChevronRight, Crosshair } from "lucide-react-native";
-import MapView, { Marker, Callout, PROVIDER_GOOGLE } from "react-native-maps";
+import MapView, { Marker, Callout } from "react-native-maps";
 import { colors, shadows } from "./theme";
 import { categoryMeta } from "./api";
 
@@ -94,7 +94,6 @@ export function JobsMap({ jobs, coords }: Props) {
         showsMyLocationButton={false}
         showsCompass={false}
         toolbarEnabled={false}
-        provider={Platform.OS === "android" ? PROVIDER_GOOGLE : undefined}
       >
         {validJobs.map((j) => {
           const isSel = j.id === selectedId;
