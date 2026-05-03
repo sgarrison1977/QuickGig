@@ -35,7 +35,7 @@ export default function TabsLayout() {
       <Tabs.Screen
         name="post"
         options={{
-          title: "Post",
+          title: "Post a Job",
           tabBarIcon: ({ color }) => (
             <Briefcase size={22} color={color} strokeWidth={2.4} />
           ),
