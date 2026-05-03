@@ -689,10 +689,46 @@ frontend:
                     origin_url → 400 {"detail":"origin_url required"}.
             No 5xx, no exceptions in backend logs. Regression is clean.
 
+  - task: "/api/jobs/mine returns my_review_id per job"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: |
+            VERIFIED — 15/15 PASS (harness: /app/backend_test_jobs_mine.py
+            against http://localhost:8001/api).
+              ✅ admin@quickgig.app/admin123 login → 200 (role=admin)
+              ✅ admin GET /jobs/mine → 200, shape {posted:[], accepted:[]}
+                 (admin has 0 jobs — still passes per spec)
+              ✅ Located real reviewer in Mongo: review
+                 c634c604-51f4-4e30-968c-b74301d75a99 by user
+                 81466a59-... ("Alice Poster", test_a_969dea@example.com)
+                 on completed job 3e7fed44-...
+              ✅ Minted a JWT for that user (verified via /auth/me)
+              ✅ GET /jobs/mine as reviewer → 200 (posted=2 accepted=0)
+              ✅ Reviewed completed job present in posted[]; status=completed
+              ✅ my_review_id == review.id (c634c604…) — exact string match
+              ✅ Other completed-but-unreviewed job (1 found) returned
+                 my_review_id=null as required
+              ✅ Every job in posted/accepted carries the my_review_id key
+                 (value is either a UUID string or null)
+              ✅ Regression: GET /jobs?category=all&status=open&sort=best →
+                 200, returns 3 jobs with normal shape (id/title/status/
+                 pay_type/pay_amount/poster_id all present)
+              ✅ /jobs (the listing) does NOT leak my_review_id — correctly
+                 scoped to /jobs/mine only
+            No 5xx, no exceptions in backend.err.log during the run.
+            Endpoint regression is clean.
+
 metadata:
   created_by: "main_agent"
-  version: "1.5"
-  test_sequence: 5
+  version: "1.6"
+  test_sequence: 6
   run_ui: false
 
 test_plan:
@@ -1074,3 +1110,25 @@ agent_communication:
 
         Not testing push / filters / chat-close per request — they remain
         verified in prior runs.
+
+    - agent: "testing"
+      message: |
+        /api/jobs/mine regression test PASSED — 15/15 assertions green.
+        Harness: /app/backend_test_jobs_mine.py (against
+        http://localhost:8001/api).
+          ✅ Admin login (admin@quickgig.app/admin123) → 200; GET /jobs/mine
+             returns {posted:[], accepted:[]} with 200 (admin has no jobs).
+          ✅ Located a real reviewer in Mongo (test_a_969dea@example.com,
+             "Alice Poster") who has reviewed completed job
+             3e7fed44-9805-4a19-8e99-247f814455c5 — review id
+             c634c604-51f4-4e30-968c-b74301d75a99.
+          ✅ Minted a JWT for that user (verified via /auth/me) and called
+             /jobs/mine: the reviewed completed job carries
+             my_review_id == "c634c604-..." (exact match) and the OTHER
+             completed-but-unreviewed job carries my_review_id=null. All
+             jobs in posted/accepted include the my_review_id key.
+          ✅ Regression: GET /jobs?category=all&status=open&sort=best → 200
+             with normal job shape; the public /jobs listing does NOT leak
+             my_review_id (correctly scoped to /jobs/mine only).
+        No 5xx, no exceptions in backend.err.log. Endpoint behaves exactly
+        as specified — main agent can ship.

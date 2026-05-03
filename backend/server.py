@@ -586,12 +586,39 @@ async def my_jobs(user: dict = Depends(get_current_user)):
     if other_ids:
         async for u in db.users.find({"id": {"$in": other_ids}}, USER_PROJECTION):
             users_map[u["id"]] = u
+
+    # Find which completed jobs the current user has already reviewed
+    completed_job_ids = [
+        j["id"] for j in (posted + accepted) if j.get("status") == "completed"
+    ]
+    my_review_map: Dict[str, str] = {}
+    if completed_job_ids:
+        async for r in db.reviews.find(
+            {"job_id": {"$in": completed_job_ids}, "reviewer_id": user["id"]},
+            {"_id": 0, "id": 1, "job_id": 1},
+        ):
+            my_review_map[r["job_id"]] = r["id"]
+
+    def with_review(d: dict, j: dict) -> dict:
+        if j.get("status") == "completed":
+            d["my_review_id"] = my_review_map.get(j["id"])
+        else:
+            d["my_review_id"] = None
+        return d
+
     out_posted = [
-        public_job(j, poster=user, worker=users_map.get(j.get("worker_id")) if j.get("worker_id") else None)
+        with_review(
+            public_job(j, poster=user, worker=users_map.get(j.get("worker_id")) if j.get("worker_id") else None),
+            j,
+        )
         for j in posted
     ]
     out_accepted = [
-        public_job(j, poster=users_map.get(j["poster_id"]), worker=user) for j in accepted
+        with_review(
+            public_job(j, poster=users_map.get(j["poster_id"]), worker=user),
+            j,
+        )
+        for j in accepted
     ]
     return {"posted": out_posted, "accepted": out_accepted}
 
