@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
@@ -6,9 +6,10 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
+import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
-import { Crown, ShieldCheck, ChevronRight, Zap, Sparkles } from "lucide-react-native";
+import { Crown, ShieldCheck, ChevronRight, Sparkles, X } from "lucide-react-native";
 import { colors, shadows } from "./theme";
 
 type Props = {
@@ -16,23 +17,68 @@ type Props = {
   hasBackgroundCheck?: boolean;
 };
 
+const DISMISS_KEY = "upsell_banner_dismissed_v1";
+
 /**
  * Eye-catching upsell shown on the Browse home screen for users who
- * haven't yet bought Pro Worker or Background Check. Each card scrolls
- * horizontally and links to the relevant upgrade flow.
+ * haven't yet bought Pro Worker or Background Check. Users can dismiss
+ * the entire banner permanently with the X button.
  */
 export function UpsellBanner({ isPro, hasBackgroundCheck }: Props) {
   const router = useRouter();
+  const [hydrated, setHydrated] = useState(false);
+  const [dismissed, setDismissed] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    AsyncStorage.getItem(DISMISS_KEY)
+      .then((v) => {
+        if (!mounted) return;
+        setDismissed(v === "1");
+        setHydrated(true);
+      })
+      .catch(() => {
+        if (!mounted) return;
+        setHydrated(true);
+      });
+    return () => {
+      mounted = false;
+    };
+  }, []);
+
+  const handleDismiss = async () => {
+    setDismissed(true);
+    try {
+      await AsyncStorage.setItem(DISMISS_KEY, "1");
+    } catch {
+      // ignore
+    }
+  };
+
   const showPro = !isPro;
   const showBg = !hasBackgroundCheck;
 
+  // Avoid flash of banner before hydration completes
+  if (!hydrated) return null;
+  if (dismissed) return null;
   if (!showPro && !showBg) return null;
 
   return (
     <View style={styles.wrap} testID="upsell-banner">
       <View style={styles.headerRow}>
-        <Sparkles size={14} color={colors.yellow} fill={colors.yellow} strokeWidth={0} />
-        <Text style={styles.eyebrow}>STAND OUT · WIN MORE GIGS</Text>
+        <View style={styles.eyebrowLeft}>
+          <Sparkles size={14} color={colors.yellow} fill={colors.yellow} strokeWidth={0} />
+          <Text style={styles.eyebrow}>STAND OUT · WIN MORE GIGS</Text>
+        </View>
+        <TouchableOpacity
+          testID="upsell-dismiss"
+          onPress={handleDismiss}
+          hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+          style={styles.dismissBtn}
+          activeOpacity={0.7}
+        >
+          <X size={14} color={colors.subtext} strokeWidth={2.8} />
+        </TouchableOpacity>
       </View>
 
       <ScrollView
@@ -131,12 +177,26 @@ function Bullet({ text }: { text: string }) {
 
 const styles = StyleSheet.create({
   wrap: { gap: 8, marginBottom: 6 },
-  headerRow: { flexDirection: "row", alignItems: "center", gap: 6, paddingHorizontal: 2 },
+  headerRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    paddingHorizontal: 2,
+  },
+  eyebrowLeft: { flexDirection: "row", alignItems: "center", gap: 6 },
   eyebrow: {
     fontSize: 10.5,
     fontWeight: "900",
     color: colors.text,
     letterSpacing: 1,
+  },
+  dismissBtn: {
+    width: 24,
+    height: 24,
+    borderRadius: 12,
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "rgba(0,0,0,0.06)",
   },
   scroll: { paddingRight: 12 },
   card: {
