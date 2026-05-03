@@ -23,6 +23,7 @@ import { api, CATEGORIES, categoryMeta } from "../../src/api";
 import { colors, brutal, shadows } from "../../src/theme";
 import { FiltersSheet, BrowseFilters, DEFAULT_FILTERS, countActive } from "../../src/FiltersSheet";
 import { JobsMap } from "../../src/JobsMap";
+import { MapErrorBoundary } from "../../src/MapErrorBoundary";
 import { JobListSkeleton } from "../../src/Skeletons";
 import { EmptyState } from "../../src/EmptyState";
 import { UpsellBanner } from "../../src/UpsellBanner";
@@ -385,7 +386,9 @@ export default function Browse() {
         ListFooterComponent={
           viewMode === "map" ? (
             <View style={styles.mapWrap} testID="map-container">
-              <JobsMap jobs={jobs} coords={coords} />
+              <MapErrorBoundary>
+                <JobsMap jobs={jobs} coords={coords} />
+              </MapErrorBoundary>
             </View>
           ) : null
         }
