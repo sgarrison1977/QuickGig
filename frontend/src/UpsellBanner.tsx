@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -6,7 +6,6 @@ import {
   TouchableOpacity,
   ScrollView,
 } from "react-native";
-import AsyncStorage from "@react-native-async-storage/async-storage";
 import { useRouter } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
 import { Crown, ShieldCheck, ChevronRight, Sparkles, X } from "lucide-react-native";
@@ -17,49 +16,21 @@ type Props = {
   hasBackgroundCheck?: boolean;
 };
 
-const DISMISS_KEY = "upsell_banner_dismissed_v1";
-
 /**
  * Eye-catching upsell shown on the Browse home screen for users who
  * haven't yet bought Pro Worker or Background Check. Users can dismiss
- * the entire banner permanently with the X button.
+ * the banner via the X button — but it intentionally re-appears on the
+ * next app launch (session-only dismissal) so we keep monetization
+ * front-and-center for new sessions.
  */
 export function UpsellBanner({ isPro, hasBackgroundCheck }: Props) {
   const router = useRouter();
-  const [hydrated, setHydrated] = useState(false);
+  // Session-only dismissal: NOT persisted. Banner returns on next app launch.
   const [dismissed, setDismissed] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    AsyncStorage.getItem(DISMISS_KEY)
-      .then((v) => {
-        if (!mounted) return;
-        setDismissed(v === "1");
-        setHydrated(true);
-      })
-      .catch(() => {
-        if (!mounted) return;
-        setHydrated(true);
-      });
-    return () => {
-      mounted = false;
-    };
-  }, []);
-
-  const handleDismiss = async () => {
-    setDismissed(true);
-    try {
-      await AsyncStorage.setItem(DISMISS_KEY, "1");
-    } catch {
-      // ignore
-    }
-  };
 
   const showPro = !isPro;
   const showBg = !hasBackgroundCheck;
 
-  // Avoid flash of banner before hydration completes
-  if (!hydrated) return null;
   if (dismissed) return null;
   if (!showPro && !showBg) return null;
 
@@ -72,7 +43,7 @@ export function UpsellBanner({ isPro, hasBackgroundCheck }: Props) {
         </View>
         <TouchableOpacity
           testID="upsell-dismiss"
-          onPress={handleDismiss}
+          onPress={() => setDismissed(true)}
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={styles.dismissBtn}
           activeOpacity={0.7}
