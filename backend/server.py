@@ -970,6 +970,189 @@ async def admin_stats(admin: dict = Depends(get_admin_user)):
     }
 
 
+@api_router.get("/admin/revenue")
+async def admin_revenue(admin: dict = Depends(get_admin_user)):
+    """Returns revenue analytics from payment_transactions:
+       - totals (all-time, 7d, 30d) for paid + refunded
+       - breakdown by package
+       - daily series for last 30 days
+       - top customers
+    """
+    now = datetime.now(timezone.utc)
+    d7 = now - timedelta(days=7)
+    d30 = now - timedelta(days=30)
+
+    # Paid filter: only count transactions that actually paid
+    paid_filter = {"payment_status": "paid"}
+
+    # ---- Top-level totals ----
+    async def _sum(filt: Dict[str, Any]) -> Dict[str, float]:
+        pipeline = [
+            {"$match": filt},
+            {
+                "$group": {
+                    "_id": None,
+                    "amount": {"$sum": "$amount"},
+                    "count": {"$sum": 1},
+                }
+            },
+        ]
+        out = await db.payment_transactions.aggregate(pipeline).to_list(1)
+        if not out:
+            return {"amount": 0.0, "count": 0}
+        return {
+            "amount": float(out[0].get("amount") or 0),
+            "count": int(out[0].get("count") or 0),
+        }
+
+    totals_all = await _sum(paid_filter)
+    totals_7d = await _sum({**paid_filter, "created_at": {"$gte": d7}})
+    totals_30d = await _sum({**paid_filter, "created_at": {"$gte": d30}})
+
+    refunds_all = await _sum({"refunded": True})
+    refunds_30d = await _sum({"refunded": True, "refunded_at": {"$gte": d30}})
+
+    # ---- By package ----
+    by_pkg_pipeline = [
+        {"$match": paid_filter},
+        {
+            "$group": {
+                "_id": "$package_id",
+                "amount": {"$sum": "$amount"},
+                "count": {"$sum": 1},
+            }
+        },
+        {"$sort": {"amount": -1}},
+    ]
+    by_pkg_raw = await db.payment_transactions.aggregate(by_pkg_pipeline).to_list(20)
+    pkg_label = {
+        "pro_monthly": "Pro Worker (30 days)",
+        "background_check": "Background Check",
+        "boost_24h": "Boost · 24h",
+        "boost_48h": "Boost · 48h",
+    }
+    by_package = [
+        {
+            "package_id": r["_id"],
+            "label": pkg_label.get(r["_id"], r["_id"]),
+            "amount": float(r["amount"] or 0),
+            "count": int(r["count"] or 0),
+        }
+        for r in by_pkg_raw
+    ]
+
+    # ---- Daily series (last 30 days, including 0-days) ----
+    daily_pipeline = [
+        {"$match": {**paid_filter, "created_at": {"$gte": d30}}},
+        {
+            "$group": {
+                "_id": {
+                    "$dateToString": {"format": "%Y-%m-%d", "date": "$created_at"}
+                },
+                "amount": {"$sum": "$amount"},
+                "count": {"$sum": 1},
+            }
+        },
+    ]
+    daily_raw = await db.payment_transactions.aggregate(daily_pipeline).to_list(100)
+    daily_map = {r["_id"]: r for r in daily_raw}
+    daily_series = []
+    for i in range(30):
+        day = (now - timedelta(days=29 - i)).strftime("%Y-%m-%d")
+        rec = daily_map.get(day)
+        daily_series.append(
+            {
+                "date": day,
+                "amount": float(rec["amount"]) if rec else 0.0,
+                "count": int(rec["count"]) if rec else 0,
+            }
+        )
+
+    # ---- Top 10 customers (by paid amount) ----
+    top_pipeline = [
+        {"$match": paid_filter},
+        {
+            "$group": {
+                "_id": "$user_id",
+                "amount": {"$sum": "$amount"},
+                "count": {"$sum": 1},
+            }
+        },
+        {"$sort": {"amount": -1}},
+        {"$limit": 10},
+    ]
+    top_raw = await db.payment_transactions.aggregate(top_pipeline).to_list(10)
+    top_user_ids = [r["_id"] for r in top_raw if r.get("_id")]
+    users_map = {}
+    if top_user_ids:
+        async for u in db.users.find(
+            {"id": {"$in": top_user_ids}}, {"_id": 0, "id": 1, "name": 1, "email": 1}
+        ):
+            users_map[u["id"]] = u
+    top_customers = [
+        {
+            "user_id": r["_id"],
+            "name": users_map.get(r["_id"], {}).get("name", "Unknown"),
+            "email": users_map.get(r["_id"], {}).get("email", ""),
+            "amount": float(r["amount"] or 0),
+            "count": int(r["count"] or 0),
+        }
+        for r in top_raw
+    ]
+
+    net_all = round(totals_all["amount"] - refunds_all["amount"], 2)
+    return {
+        "totals": {
+            "all_time": totals_all,
+            "last_7_days": totals_7d,
+            "last_30_days": totals_30d,
+            "refunds_all_time": refunds_all,
+            "refunds_30_days": refunds_30d,
+            "net_all_time": net_all,
+        },
+        "by_package": by_package,
+        "daily_series_30d": daily_series,
+        "top_customers": top_customers,
+        "currency": "usd",
+        "generated_at": now.isoformat(),
+    }
+
+
+@api_router.get("/admin/revenue/transactions")
+async def admin_recent_transactions(
+    admin: dict = Depends(get_admin_user), limit: int = 50
+):
+    """Last N transactions for the admin ledger view."""
+    cursor = db.payment_transactions.find({}, {"_id": 0}).sort("created_at", -1).limit(limit)
+    rows = await cursor.to_list(limit)
+    user_ids = list({r.get("user_id") for r in rows if r.get("user_id")})
+    users_map: Dict[str, Dict[str, Any]] = {}
+    if user_ids:
+        async for u in db.users.find(
+            {"id": {"$in": user_ids}}, {"_id": 0, "id": 1, "name": 1, "email": 1}
+        ):
+            users_map[u["id"]] = u
+    return [
+        {
+            "id": r.get("id"),
+            "session_id": r.get("session_id"),
+            "user_id": r.get("user_id"),
+            "user_name": users_map.get(r.get("user_id", ""), {}).get("name", "—"),
+            "user_email": users_map.get(r.get("user_id", ""), {}).get("email", ""),
+            "package_id": r.get("package_id"),
+            "kind": r.get("kind"),
+            "amount": float(r.get("amount") or 0),
+            "currency": r.get("currency", "usd"),
+            "status": r.get("status"),
+            "payment_status": r.get("payment_status"),
+            "credited": bool(r.get("credited")),
+            "refunded": bool(r.get("refunded")),
+            "created_at": r["created_at"].isoformat() if r.get("created_at") else None,
+        }
+        for r in rows
+    ]
+
+
 @api_router.post("/admin/change-password")
 async def admin_change_password(data: AdminPasswordChange, admin: dict = Depends(get_admin_user)):
     full = await db.users.find_one({"id": admin["id"]}, {"_id": 0})

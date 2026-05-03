@@ -206,15 +206,39 @@ function StatsView({ stats }: { stats: any }) {
     { label: "Messages", value: stats.messages, icon: MessageSquare, color: "#FFE4D5" },
   ];
   return (
-    <View style={styles.statsGrid}>
-      {items.map((it) => (
-        <View key={it.label} style={[styles.statCard, { backgroundColor: it.color }]}>
-          <it.icon size={20} color={colors.text} strokeWidth={2.2} />
-          <Text style={styles.statValue}>{it.value}</Text>
-          <Text style={styles.statLabel}>{it.label}</Text>
-        </View>
-      ))}
+    <View style={{ gap: 14 }}>
+      <View style={styles.statsGrid}>
+        {items.map((it) => (
+          <View key={it.label} style={[styles.statCard, { backgroundColor: it.color }]}>
+            <it.icon size={20} color={colors.text} strokeWidth={2.2} />
+            <Text style={styles.statValue}>{it.value}</Text>
+            <Text style={styles.statLabel}>{it.label}</Text>
+          </View>
+        ))}
+      </View>
+      <RevenueLink />
     </View>
+  );
+}
+
+function RevenueLink() {
+  const router = useRouter();
+  return (
+    <TouchableOpacity
+      testID="open-revenue"
+      onPress={() => router.push("/admin/revenue")}
+      activeOpacity={0.88}
+      style={styles.revenueLink}
+    >
+      <View style={styles.revenueIcon}>
+        <Text style={{ fontSize: 22 }}>💰</Text>
+      </View>
+      <View style={{ flex: 1 }}>
+        <Text style={styles.revenueTitle}>Revenue analytics</Text>
+        <Text style={styles.revenueSub}>Sales, refunds, top customers, last 30 days</Text>
+      </View>
+      <Text style={styles.revenueChev}>›</Text>
+    </TouchableOpacity>
   );
 }
 
@@ -342,6 +366,27 @@ const styles = StyleSheet.create({
   },
   statValue: { fontSize: 28, fontWeight: "800", color: colors.text, letterSpacing: -0.5 },
   statLabel: { fontWeight: "700", color: colors.textSecondary, fontSize: 11, letterSpacing: 0.3 },
+  revenueLink: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+    padding: 14,
+    borderRadius: 18,
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderColor: colors.primary,
+  },
+  revenueIcon: {
+    width: 44,
+    height: 44,
+    borderRadius: 22,
+    backgroundColor: "#FFF1F1",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  revenueTitle: { fontSize: 15, fontWeight: "800", color: colors.text, letterSpacing: -0.2 },
+  revenueSub: { fontSize: 11.5, color: colors.textSecondary, fontWeight: "600", marginTop: 2 },
+  revenueChev: { fontSize: 26, color: colors.primary, fontWeight: "900" },
   userRow: { flexDirection: "row", alignItems: "center", gap: 12 },
   avatar: {
     width: 44,
