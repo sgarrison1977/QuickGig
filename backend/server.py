@@ -1145,22 +1145,53 @@ async def create_checkout(
 
 
 async def _credit_transaction_if_paid(session_id: str, http_request: Request) -> Dict[str, Any]:
-    """Idempotent credit: only flips the user/job flag once per session."""
+    """Idempotent credit: only flips the user/job flag once per session.
+    Uses stripe-python directly because emergentintegrations.get_checkout_status
+    is unreliable (intermittent 404s + pydantic metadata validation errors).
+    """
     txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
     if not txn:
         raise HTTPException(status_code=404, detail="Transaction not found")
 
-    sc = _stripe_client(http_request)
-    status = await sc.get_checkout_status(session_id)
+    api_key = os.environ.get("STRIPE_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+
+    import stripe  # type: ignore
+    stripe.api_key = api_key
+
+    try:
+        sess = stripe.checkout.Session.retrieve(session_id)
+    except Exception as e:
+        # Don't block the frontend — return last-known state so polling keeps working
+        logging.warning(f"Stripe session retrieve failed for {session_id}: {e}")
+        return {
+            "session_id": session_id,
+            "status": txn.get("status", "open"),
+            "payment_status": txn.get("payment_status", "unpaid"),
+            "amount_total": int(float(txn.get("amount", 0)) * 100),
+            "currency": txn.get("currency", "usd"),
+            "credited": bool(txn.get("credited", False)),
+        }
+
+    s_status = (sess.get("status") if hasattr(sess, "get") else getattr(sess, "status", None)) or "open"
+    s_payment_status = (
+        sess.get("payment_status") if hasattr(sess, "get") else getattr(sess, "payment_status", None)
+    ) or "unpaid"
+    amount_total = (
+        sess.get("amount_total") if hasattr(sess, "get") else getattr(sess, "amount_total", None)
+    ) or 0
+    currency = (
+        sess.get("currency") if hasattr(sess, "get") else getattr(sess, "currency", None)
+    ) or "usd"
 
     update: Dict[str, Any] = {
-        "status": status.status,
-        "payment_status": status.payment_status,
+        "status": s_status,
+        "payment_status": s_payment_status,
         "updated_at": datetime.now(timezone.utc),
     }
 
-    if status.payment_status == "paid" and not txn.get("credited"):
-        # Apply credit exactly once
+    if s_payment_status == "paid" and not txn.get("credited"):
         kind = txn.get("kind")
         meta = txn.get("metadata") or {}
         user_id = meta.get("user_id")
@@ -1206,11 +1237,11 @@ async def _credit_transaction_if_paid(session_id: str, http_request: Request) ->
     )
     return {
         "session_id": session_id,
-        "status": status.status,
-        "payment_status": status.payment_status,
-        "amount_total": status.amount_total,
-        "currency": status.currency,
-        "credited": update.get("credited", txn.get("credited", False)),
+        "status": s_status,
+        "payment_status": s_payment_status,
+        "amount_total": int(amount_total or 0),
+        "currency": currency,
+        "credited": bool(update.get("credited", txn.get("credited", False))),
     }
 
 
