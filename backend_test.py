@@ -1,450 +1,353 @@
 """
-QuickGig backend tests — focused on:
-  1. Push notification endpoints (register / unregister / settings)
-  2. notify_user() hooks on accept / message / complete / cancel / review
-     — must NEVER block or break the 200 OK response even when push tokens
-       are fake or missing.
+Backend test harness for the new Stripe Checkout integration.
+
+Focus: /api/billing/checkout, /api/billing/checkout/status/{id}, /api/webhook/stripe.
+We intentionally DO NOT drive the hosted Stripe checkout with a real card —
+just verify endpoint behaviour, auth, validation, security (price manipulation
+ignored), idempotency, webhook signature validation, and that the
+`payment_transactions` collection is populated correctly.
 """
 
 import os
+import sys
 import time
-import uuid
 import json
-import requests
+import base64
+import random
+import string
+import traceback
 
-BASE = "https://task-connect-81.preview.emergentagent.com/api"
-TIMEOUT = 30
+import httpx
+from pymongo import MongoClient
 
-results = []
+BACKEND_URL = "https://task-connect-81.preview.emergentagent.com"
+API = f"{BACKEND_URL}/api"
+
+MONGO_URL = os.environ.get("MONGO_URL", "mongodb://localhost:27017")
+DB_NAME = os.environ.get("DB_NAME", "quickgig_database")
+
+mc = MongoClient(MONGO_URL)
+db = mc[DB_NAME]
+
+RESULTS = []
 
 
-def log(name, ok, detail=""):
-    status = "PASS" if ok else "FAIL"
-    line = f"[{status}] {name}"
-    if detail:
-        line += f"  ({detail})"
-    print(line)
-    results.append({"name": name, "ok": ok, "detail": detail})
-    return ok
+def rec(name, ok, detail=""):
+    RESULTS.append((name, ok, detail))
+    flag = "PASS" if ok else "FAIL"
+    print(f"[{flag}] {name}  {detail}")
 
 
-def auth_header(token):
+def rand_suffix(n=6):
+    return "".join(random.choices(string.ascii_lowercase + string.digits, k=n))
+
+
+def register(name_base, email_base):
+    suf = rand_suffix()
+    email = f"{email_base}.{suf}@example.com"
+    pw = "Passw0rd!" + suf
+    r = httpx.post(f"{API}/auth/register",
+                   json={"email": email, "password": pw,
+                         "name": f"{name_base} {suf.title()}",
+                         "phone": "+14155550" + suf[:3]},
+                   timeout=20)
+    r.raise_for_status()
+    data = r.json()
+    return data["token"], data["user"], email, pw
+
+
+def verify_user(token):
+    tiny_b64 = base64.b64encode(b"fake-id-document").decode()
+    r = httpx.post(f"{API}/auth/verify-id",
+                   headers={"Authorization": f"Bearer {token}"},
+                   json={"id_document": tiny_b64},
+                   timeout=15)
+    r.raise_for_status()
+    return r.json()
+
+
+def create_job(token, title="Paint the fence"):
+    r = httpx.post(
+        f"{API}/jobs",
+        headers={"Authorization": f"Bearer {token}"},
+        json={
+            "title": title,
+            "description": "Weekend paint job",
+            "category": "home",
+            "pay_type": "hourly",
+            "pay_amount": 25.0,
+            "address": "500 Market St, San Francisco, CA",
+            "latitude": 37.7897,
+            "longitude": -122.3972,
+            "photos": [],
+        },
+        timeout=15,
+    )
+    r.raise_for_status()
+    return r.json()
+
+
+def auth_headers(token):
     return {"Authorization": f"Bearer {token}"}
 
 
-def register_user(email, password, name):
-    r = requests.post(
-        f"{BASE}/auth/register",
-        json={"email": email, "password": password, "name": name},
-        timeout=TIMEOUT,
-    )
-    if r.status_code == 400 and "already registered" in r.text.lower():
-        # fallback to login
-        lr = requests.post(
-            f"{BASE}/auth/login",
-            json={"email": email, "password": password},
-            timeout=TIMEOUT,
-        )
-        lr.raise_for_status()
-        return lr.json()
-    r.raise_for_status()
-    return r.json()
+# ----------- Tests -------------
+
+def test_auth_required():
+    r1 = httpx.post(f"{API}/billing/checkout",
+                    json={"package_id": "pro_monthly",
+                          "origin_url": "https://example.com"},
+                    timeout=15)
+    ok1 = r1.status_code in (401, 403)
+    rec("T1a auth required on POST /billing/checkout",
+        ok1, f"status={r1.status_code}")
+
+    r2 = httpx.get(f"{API}/billing/checkout/status/fakesession", timeout=15)
+    ok2 = r2.status_code in (401, 403)
+    rec("T1b auth required on GET /billing/checkout/status/{id}",
+        ok2, f"status={r2.status_code}")
 
 
-def login(email, password):
-    r = requests.post(
-        f"{BASE}/auth/login",
-        json={"email": email, "password": password},
-        timeout=TIMEOUT,
-    )
-    r.raise_for_status()
-    return r.json()
+def test_price_manipulation_ignored(token):
+    malicious_body = {
+        "package_id": "pro_monthly",
+        "origin_url": "https://example.com",
+        "amount": 0.01,
+        "price": 1,
+        "currency": "eur",
+    }
+    r = httpx.post(f"{API}/billing/checkout",
+                   headers=auth_headers(token),
+                   json=malicious_body, timeout=30)
+    if r.status_code != 200:
+        rec("T2 price manipulation — checkout create", False,
+            f"status={r.status_code} body={r.text[:200]}")
+        return None
+    data = r.json()
+    sid = data.get("session_id")
+    txn = db.payment_transactions.find_one({"session_id": sid})
+    ok = (txn is not None
+          and abs(float(txn.get("amount", 0)) - 4.99) < 0.001
+          and txn.get("currency") == "usd"
+          and txn.get("package_id") == "pro_monthly")
+    detail = (f"session={sid} txn.amount={txn.get('amount') if txn else None} "
+              f"txn.currency={txn.get('currency') if txn else None}")
+    rec("T2 price manipulation ignored — server uses catalog $4.99 USD",
+        ok, detail)
+    return sid
 
 
-def verify_id(token):
-    r = requests.post(
-        f"{BASE}/auth/verify-id",
-        json={"id_document": "data:image/png;base64,AAAA"},
-        headers=auth_header(token),
-        timeout=TIMEOUT,
-    )
-    r.raise_for_status()
-    return r.json()
+def test_invalid_package_id(token):
+    r = httpx.post(f"{API}/billing/checkout",
+                   headers=auth_headers(token),
+                   json={"package_id": "pro_yearly_hacker",
+                         "origin_url": "https://example.com"},
+                   timeout=15)
+    ok = r.status_code in (400, 422)
+    rec("T3 invalid package_id rejected",
+        ok, f"status={r.status_code}")
 
 
-# -----------------------------------------------------------
-# 0. Provision two fresh real-looking users and an admin login
-# -----------------------------------------------------------
-suffix = uuid.uuid4().hex[:8]
-USER_A = {
-    "email": f"sarah.miller.{suffix}@quickgig-test.com",
-    "password": "SecurePass!2026",
-    "name": "Sarah Miller",
-}
-USER_B = {
-    "email": f"david.chen.{suffix}@quickgig-test.com",
-    "password": "SecurePass!2026",
-    "name": "David Chen",
-}
+def test_missing_origin_url(token):
+    r = httpx.post(f"{API}/billing/checkout",
+                   headers=auth_headers(token),
+                   json={"package_id": "pro_monthly"},
+                   timeout=15)
+    ok = r.status_code in (400, 422)
+    rec("T4a missing origin_url rejected",
+        ok, f"status={r.status_code}")
 
-print("=" * 70)
-print("Setup: creating fresh test users")
-print("=" * 70)
-
-ra = register_user(USER_A["email"], USER_A["password"], USER_A["name"])
-rb = register_user(USER_B["email"], USER_B["password"], USER_B["name"])
-TOKEN_A = ra["token"]
-TOKEN_B = rb["token"]
-USER_A_ID = ra["user"]["id"]
-USER_B_ID = rb["user"]["id"]
-log("setup: register/login two users", True, f"A={USER_A_ID[:8]} B={USER_B_ID[:8]}")
-
-# Admin login
-ADMIN_EMAIL = "admin@quickgig.app"
-ADMIN_PASSWORD = "admin123"
-try:
-    admin_resp = login(ADMIN_EMAIL, ADMIN_PASSWORD)
-    log("setup: admin login", admin_resp.get("user", {}).get("role") == "admin")
-except Exception as e:
-    log("setup: admin login", False, str(e))
-
-# Verify IDs so users can post / accept jobs
-try:
-    verify_id(TOKEN_A)
-    verify_id(TOKEN_B)
-    log("setup: verify IDs (mocked)", True)
-except Exception as e:
-    log("setup: verify IDs (mocked)", False, str(e))
+    r2 = httpx.post(f"{API}/billing/checkout",
+                    headers=auth_headers(token),
+                    json={"package_id": "pro_monthly", "origin_url": ""},
+                    timeout=15)
+    ok2 = r2.status_code in (400, 422)
+    rec("T4b empty origin_url rejected",
+        ok2, f"status={r2.status_code}")
 
 
-# =========================================================================
-# 1. Push notification endpoint tests
-# =========================================================================
-
-print()
-print("=" * 70)
-print("1. Push notification endpoints")
-print("=" * 70)
-
-FAKE_TOKEN_A = f"ExponentPushToken[fake-{suffix}-A]"
-FAKE_TOKEN_B = f"ExponentPushToken[fake-{suffix}-B]"
-
-# 1a. Unauthenticated register-token → 401
-r = requests.post(
-    f"{BASE}/notifications/register-token",
-    json={"token": FAKE_TOKEN_A},
-    timeout=TIMEOUT,
-)
-log("1a. unauthenticated register-token → 401/403",
-    r.status_code in (401, 403),
-    f"got {r.status_code}")
-
-# 1b. Empty token → 400
-r = requests.post(
-    f"{BASE}/notifications/register-token",
-    json={"token": ""},
-    headers=auth_header(TOKEN_A),
-    timeout=TIMEOUT,
-)
-log("1b. empty token → 400", r.status_code == 400, f"got {r.status_code}: {r.text[:120]}")
-
-# 1c. Whitespace-only token → 400 (extra robustness)
-r = requests.post(
-    f"{BASE}/notifications/register-token",
-    json={"token": "   "},
-    headers=auth_header(TOKEN_A),
-    timeout=TIMEOUT,
-)
-log("1c. whitespace token → 400", r.status_code == 400, f"got {r.status_code}")
-
-# 1d. Register valid token
-t0 = time.time()
-r = requests.post(
-    f"{BASE}/notifications/register-token",
-    json={"token": FAKE_TOKEN_A, "platform": "ios"},
-    headers=auth_header(TOKEN_A),
-    timeout=TIMEOUT,
-)
-elapsed = time.time() - t0
-ok = r.status_code == 200 and r.json().get("ok") is True
-log("1d. register valid token → {ok:true}", ok, f"status={r.status_code} elapsed={elapsed:.2f}s body={r.text[:120]}")
-
-# 1e. GET settings → has_token=true, enabled=true
-r = requests.get(
-    f"{BASE}/notifications/settings",
-    headers=auth_header(TOKEN_A),
-    timeout=TIMEOUT,
-)
-body = r.json() if r.ok else {}
-ok = (
-    r.status_code == 200
-    and body.get("has_token") is True
-    and body.get("enabled") is True
-)
-log("1e. GET settings after register → has_token=true, enabled=true",
-    ok, f"body={body}")
-
-# 1f. PUT settings disable
-r = requests.put(
-    f"{BASE}/notifications/settings",
-    json={"enabled": False},
-    headers=auth_header(TOKEN_A),
-    timeout=TIMEOUT,
-)
-body = r.json() if r.ok else {}
-ok = r.status_code == 200 and body.get("ok") is True and body.get("enabled") is False
-log("1f. PUT settings {enabled:false}", ok, f"body={body}")
-
-# 1g. GET settings reflects disable
-r = requests.get(f"{BASE}/notifications/settings", headers=auth_header(TOKEN_A), timeout=TIMEOUT)
-body = r.json() if r.ok else {}
-log("1g. GET settings reflects enabled=false",
-    body.get("enabled") is False and body.get("has_token") is True,
-    f"body={body}")
-
-# 1h. PUT settings re-enable
-r = requests.put(
-    f"{BASE}/notifications/settings",
-    json={"enabled": True},
-    headers=auth_header(TOKEN_A),
-    timeout=TIMEOUT,
-)
-body = r.json() if r.ok else {}
-log("1h. PUT settings {enabled:true}",
-    r.status_code == 200 and body.get("enabled") is True, f"body={body}")
-
-# 1i. unregister-token clears token
-r = requests.post(
-    f"{BASE}/notifications/unregister-token",
-    headers=auth_header(TOKEN_A),
-    timeout=TIMEOUT,
-)
-ok = r.status_code == 200 and r.json().get("ok") is True
-log("1i. unregister-token → ok:true", ok, f"status={r.status_code} body={r.text[:120]}")
-
-# 1j. settings shows has_token=false after unregister
-r = requests.get(f"{BASE}/notifications/settings", headers=auth_header(TOKEN_A), timeout=TIMEOUT)
-body = r.json() if r.ok else {}
-log("1j. has_token=false after unregister",
-    body.get("has_token") is False, f"body={body}")
-
-# 1k. Re-register tokens for both A and B (will be used for event-trigger tests)
-r1 = requests.post(
-    f"{BASE}/notifications/register-token",
-    json={"token": FAKE_TOKEN_A, "platform": "ios"},
-    headers=auth_header(TOKEN_A),
-    timeout=TIMEOUT,
-)
-r2 = requests.post(
-    f"{BASE}/notifications/register-token",
-    json={"token": FAKE_TOKEN_B, "platform": "android"},
-    headers=auth_header(TOKEN_B),
-    timeout=TIMEOUT,
-)
-log("1k. re-register fake tokens for both users",
-    r1.status_code == 200 and r2.status_code == 200,
-    f"A={r1.status_code} B={r2.status_code}")
-
-# 1l. Re-registering same token under user B should clear from A (uniqueness)
-# Register the SAME token on B and verify A.has_token becomes false
-r = requests.post(
-    f"{BASE}/notifications/register-token",
-    json={"token": FAKE_TOKEN_A, "platform": "android"},
-    headers=auth_header(TOKEN_B),
-    timeout=TIMEOUT,
-)
-ok_register = r.status_code == 200
-ra = requests.get(f"{BASE}/notifications/settings", headers=auth_header(TOKEN_A), timeout=TIMEOUT)
-rb = requests.get(f"{BASE}/notifications/settings", headers=auth_header(TOKEN_B), timeout=TIMEOUT)
-log(
-    "1l. token transferred to B → A.has_token=false, B.has_token=true",
-    ok_register
-    and ra.json().get("has_token") is False
-    and rb.json().get("has_token") is True,
-    f"A={ra.json()} B={rb.json()}",
-)
-
-# Restore: re-register A's own distinct token
-requests.post(
-    f"{BASE}/notifications/register-token",
-    json={"token": FAKE_TOKEN_A, "platform": "ios"},
-    headers=auth_header(TOKEN_A),
-    timeout=TIMEOUT,
-)
-# Reset B's token to its own
-requests.post(
-    f"{BASE}/notifications/register-token",
-    json={"token": FAKE_TOKEN_B, "platform": "android"},
-    headers=auth_header(TOKEN_B),
-    timeout=TIMEOUT,
-)
+def test_boost_ownership(token_owner, other_token):
+    job = create_job(other_token, title="Other user's job")
+    r = httpx.post(f"{API}/billing/checkout",
+                   headers=auth_headers(token_owner),
+                   json={"package_id": "boost_24h",
+                         "origin_url": "https://example.com",
+                         "job_id": job["id"]},
+                   timeout=15)
+    ok = r.status_code == 403
+    rec("T5 boost of another user's job → 403",
+        ok, f"status={r.status_code} detail={r.text[:150]}")
 
 
-# =========================================================================
-# 2. Event triggers — must return 200 quickly even when push token is fake
-# =========================================================================
-
-print()
-print("=" * 70)
-print("2. Event triggers (notify_user must not block / fail)")
-print("=" * 70)
-
-
-def time_request(method, url, **kwargs):
-    t0 = time.time()
-    r = requests.request(method, url, timeout=TIMEOUT, **kwargs)
-    return r, time.time() - t0
+def test_boost_missing_job_id(token):
+    r = httpx.post(f"{API}/billing/checkout",
+                   headers=auth_headers(token),
+                   json={"package_id": "boost_24h",
+                         "origin_url": "https://example.com"},
+                   timeout=15)
+    ok = r.status_code == 400
+    rec("T6 boost_24h without job_id → 400",
+        ok, f"status={r.status_code} detail={r.text[:150]}")
 
 
-# 2a. A creates a job
-job_payload = {
-    "title": "Help moving furniture this Saturday",
-    "description": "Need help moving a sofa and 3 boxes from a 2nd-floor apartment.",
-    "category": "moving",
-    "pay_type": "hourly",
-    "pay_amount": 35.0,
-    "address": "1234 Mission St, San Francisco, CA",
-    "latitude": 37.7621,
-    "longitude": -122.4194,
-    "photos": [],
-}
-r, dt = time_request("POST", f"{BASE}/jobs", headers=auth_header(TOKEN_A), json=job_payload)
-ok = r.status_code == 200
-job1 = r.json() if ok else {}
-log("2a. user A creates job", ok, f"status={r.status_code} dt={dt:.2f}s")
+def test_successful_create(token):
+    r = httpx.post(f"{API}/billing/checkout",
+                   headers=auth_headers(token),
+                   json={"package_id": "background_check",
+                         "origin_url": "https://task-connect-81.preview.emergentagent.com"},
+                   timeout=30)
+    if r.status_code != 200:
+        rec("T7 successful create", False,
+            f"status={r.status_code} body={r.text[:200]}")
+        return None
+    data = r.json()
+    url = data.get("url") or ""
+    sid = data.get("session_id")
+    ok_url = ("stripe" in url.lower()) and bool(sid)
+    rec("T7a response shape — url contains 'stripe' + session_id",
+        ok_url,
+        f"url_prefix={url[:80]} session_id={sid}")
 
-# 2b. B accepts → notify_user(poster) — should not hang
-job1_id = job1.get("id")
-r, dt = time_request("POST", f"{BASE}/jobs/{job1_id}/accept", headers=auth_header(TOKEN_B))
-log(
-    "2b. user B accepts job (notify A) → 200 fast",
-    r.status_code == 200 and dt < 3.0,
-    f"status={r.status_code} dt={dt:.2f}s",
-)
-
-# Get conversation id
-r = requests.get(f"{BASE}/conversations", headers=auth_header(TOKEN_A), timeout=TIMEOUT)
-convos = r.json() if r.ok else []
-convo_id = next((c["id"] for c in convos if c.get("job_id") == job1_id), None)
-log("2c. conversation auto-created on accept", bool(convo_id), f"convo_id={convo_id}")
-
-# 2d. A sends a message → notify B
-r, dt = time_request(
-    "POST",
-    f"{BASE}/conversations/{convo_id}/messages",
-    headers=auth_header(TOKEN_A),
-    json={"text": "Hi David, I can be ready by 10am Saturday. Sound good?"},
-)
-log("2d. send message A→B → 200 fast",
-    r.status_code == 200 and dt < 3.0, f"status={r.status_code} dt={dt:.2f}s")
-
-# 2e. B sends a message → notify A
-r, dt = time_request(
-    "POST",
-    f"{BASE}/conversations/{convo_id}/messages",
-    headers=auth_header(TOKEN_B),
-    json={"text": "10am works great. I'll bring straps and gloves."},
-)
-log("2e. send message B→A → 200 fast",
-    r.status_code == 200 and dt < 3.0, f"status={r.status_code} dt={dt:.2f}s")
-
-# 2f. A marks complete → notify B
-r, dt = time_request("POST", f"{BASE}/jobs/{job1_id}/complete", headers=auth_header(TOKEN_A))
-log("2f. job complete (poster) → 200 fast",
-    r.status_code == 200 and dt < 3.0, f"status={r.status_code} dt={dt:.2f}s")
-
-# 2g. A reviews B → notify B
-r, dt = time_request(
-    "POST",
-    f"{BASE}/reviews",
-    headers=auth_header(TOKEN_A),
-    json={
-        "job_id": job1_id,
-        "reviewee_id": USER_B_ID,
-        "rating": 5,
-        "comment": "Great worker, super reliable. Thanks David!",
-    },
-)
-log("2g. create review A→B → 200 fast",
-    r.status_code == 200 and dt < 3.0, f"status={r.status_code} dt={dt:.2f}s")
-
-# 2h. B reviews A
-r, dt = time_request(
-    "POST",
-    f"{BASE}/reviews",
-    headers=auth_header(TOKEN_B),
-    json={
-        "job_id": job1_id,
-        "reviewee_id": USER_A_ID,
-        "rating": 5,
-        "comment": "Easy job, friendly poster.",
-    },
-)
-log("2h. create review B→A → 200 fast",
-    r.status_code == 200 and dt < 3.0, f"status={r.status_code} dt={dt:.2f}s")
-
-# 2i. New job + accept + cancel by poster → notify worker on cancel
-job_payload2 = dict(job_payload, title="Quick yard cleanup")
-r, dt = time_request("POST", f"{BASE}/jobs", headers=auth_header(TOKEN_A), json=job_payload2)
-job2_id = r.json()["id"] if r.ok else None
-log("2i.1 second job created", r.status_code == 200, f"status={r.status_code}")
-
-r, dt = time_request("POST", f"{BASE}/jobs/{job2_id}/accept", headers=auth_header(TOKEN_B))
-log("2i.2 second job accepted by B",
-    r.status_code == 200 and dt < 3.0, f"status={r.status_code} dt={dt:.2f}s")
-
-r, dt = time_request("POST", f"{BASE}/jobs/{job2_id}/cancel", headers=auth_header(TOKEN_A))
-log("2i.3 poster cancels accepted job (notify worker) → 200 fast",
-    r.status_code == 200 and dt < 3.0, f"status={r.status_code} dt={dt:.2f}s")
+    txn = db.payment_transactions.find_one({"session_id": sid})
+    ok_db = (txn is not None
+             and txn.get("status") == "initiated"
+             and txn.get("credited") is False
+             and txn.get("package_id") == "background_check"
+             and abs(float(txn.get("amount", 0)) - 10.00) < 0.001
+             and txn.get("currency") == "usd")
+    detail = (f"txn={ {k: txn.get(k) for k in ('status','credited','amount','currency','package_id')} if txn else None}")
+    rec("T7b payment_transactions row status=initiated, credited=false",
+        ok_db, detail)
+    return sid
 
 
-# 2j. Edge case: notify_user with a DISABLED user must not block
-# Disable B's notifications, send a message; should still return fast.
-requests.put(
-    f"{BASE}/notifications/settings",
-    json={"enabled": False},
-    headers=auth_header(TOKEN_B),
-    timeout=TIMEOUT,
-)
-# create job + accept to get convo
-job_payload3 = dict(job_payload, title="Wash my car this evening")
-r = requests.post(f"{BASE}/jobs", headers=auth_header(TOKEN_A), json=job_payload3, timeout=TIMEOUT)
-j3id = r.json()["id"]
-r = requests.post(f"{BASE}/jobs/{j3id}/accept", headers=auth_header(TOKEN_B), timeout=TIMEOUT)
-convos = requests.get(f"{BASE}/conversations", headers=auth_header(TOKEN_A), timeout=TIMEOUT).json()
-c3 = next((c["id"] for c in convos if c.get("job_id") == j3id), None)
-r, dt = time_request(
-    "POST",
-    f"{BASE}/conversations/{c3}/messages",
-    headers=auth_header(TOKEN_A),
-    json={"text": "Heading over now."},
-)
-log("2j. message to user with notifications disabled → still 200 fast",
-    r.status_code == 200 and dt < 3.0, f"status={r.status_code} dt={dt:.2f}s")
+def test_polling_idempotency(token, session_id):
+    statuses = []
+    errors = []
+    for i in range(5):
+        try:
+            r = httpx.get(f"{API}/billing/checkout/status/{session_id}",
+                          headers=auth_headers(token), timeout=30)
+            statuses.append(r.status_code)
+            if r.status_code == 200:
+                j = r.json()
+                if j.get("payment_status") != "unpaid":
+                    errors.append(f"poll{i} payment_status={j.get('payment_status')}")
+                if j.get("credited") is True:
+                    errors.append(f"poll{i} credited prematurely")
+            else:
+                errors.append(f"poll{i} status={r.status_code} body={r.text[:100]}")
+        except Exception as e:
+            errors.append(f"poll{i} exc={e}")
+        time.sleep(0.3)
 
-# 2k. Edge case: receiver has NO push token at all
-requests.post(
-    f"{BASE}/notifications/unregister-token",
-    headers=auth_header(TOKEN_B),
-    timeout=TIMEOUT,
-)
-r, dt = time_request(
-    "POST",
-    f"{BASE}/conversations/{c3}/messages",
-    headers=auth_header(TOKEN_A),
-    json={"text": "Just arrived at the address."},
-)
-log("2k. message to user with NO push token → still 200 fast",
-    r.status_code == 200 and dt < 3.0, f"status={r.status_code} dt={dt:.2f}s")
+    count = db.payment_transactions.count_documents({"session_id": session_id})
+    txn = db.payment_transactions.find_one({"session_id": session_id})
+    ok = (all(s == 200 for s in statuses)
+          and not errors
+          and count == 1
+          and txn
+          and txn.get("credited") is False)
+    rec("T8 polling 5x idempotent (200 unpaid, 1 DB row, no double-credit)",
+        ok,
+        f"statuses={statuses} count={count} credited={txn.get('credited') if txn else None} "
+        f"errors={errors[:2]}")
 
 
-# Summary
-print()
-print("=" * 70)
-passed = sum(1 for x in results if x["ok"])
-failed = sum(1 for x in results if not x["ok"])
-print(f"RESULTS: {passed} passed / {failed} failed / {len(results)} total")
-for x in results:
-    if not x["ok"]:
-        print(f"  FAIL: {x['name']} — {x['detail']}")
-print("=" * 70)
+def test_webhook_invalid_signature():
+    body = json.dumps({"type": "checkout.session.completed",
+                       "data": {"object": {"id": "cs_test_fake"}}}).encode()
+    r1 = httpx.post(f"{API}/webhook/stripe", content=body,
+                    headers={"content-type": "application/json"},
+                    timeout=15)
+    rec("T9a webhook without Stripe-Signature → 400",
+        r1.status_code == 400, f"status={r1.status_code}")
+
+    r2 = httpx.post(f"{API}/webhook/stripe", content=body,
+                    headers={"content-type": "application/json",
+                             "Stripe-Signature": "t=12345,v1=deadbeef"},
+                    timeout=15)
+    rec("T9b webhook with bogus Stripe-Signature → 400",
+        r2.status_code == 400, f"status={r2.status_code}")
+
+
+def test_mock_endpoints_still_work(token_verified):
+    r1 = httpx.post(f"{API}/billing/subscribe-pro",
+                    headers=auth_headers(token_verified), timeout=15)
+    ok1 = r1.status_code == 200 and r1.json().get("is_pro") is True
+    rec("T10a mock /billing/subscribe-pro still works",
+        ok1, f"status={r1.status_code}")
+
+    r2 = httpx.post(f"{API}/billing/background-check",
+                    headers=auth_headers(token_verified), timeout=15)
+    ok2 = r2.status_code == 200 and r2.json().get("has_background_check") is True
+    rec("T10b mock /billing/background-check still works",
+        ok2, f"status={r2.status_code}")
+
+    job = create_job(token_verified, title="Boost me")
+    r3 = httpx.post(f"{API}/billing/boost-post",
+                    headers=auth_headers(token_verified),
+                    json={"job_id": job["id"], "plan": "24h"},
+                    timeout=15)
+    ok3 = r3.status_code == 200 and r3.json().get("is_boosted") is True
+    rec("T10c mock /billing/boost-post still works",
+        ok3, f"status={r3.status_code}")
+
+
+def main():
+    print("========== Stripe Checkout backend tests ==========")
+    print(f"API = {API}")
+    print(f"MONGO = {MONGO_URL} DB = {DB_NAME}\n")
+
+    test_auth_required()
+
+    try:
+        tokenA, userA, emailA, _pwA = register("Emma Rodriguez", "emma.rodriguez")
+        verify_user(tokenA)
+        tokenB, userB, emailB, _pwB = register("Liam Thompson", "liam.thompson")
+        verify_user(tokenB)
+        print(f"  Registered & verified: {emailA} / {emailB}\n")
+    except Exception as e:
+        rec("SETUP register two users", False, str(e))
+        print_summary()
+        return
+
+    test_price_manipulation_ignored(tokenA)
+    test_invalid_package_id(tokenA)
+    test_missing_origin_url(tokenA)
+    test_boost_ownership(tokenA, tokenB)
+    test_boost_missing_job_id(tokenA)
+    sid_b = test_successful_create(tokenA)
+
+    if sid_b:
+        test_polling_idempotency(tokenA, sid_b)
+    else:
+        rec("T8 polling idempotency SKIPPED", False, "T7 failed to create session")
+
+    test_webhook_invalid_signature()
+    test_mock_endpoints_still_work(tokenB)
+    print_summary()
+
+
+def print_summary():
+    total = len(RESULTS)
+    passed = sum(1 for _, ok, _ in RESULTS if ok)
+    failed = total - passed
+    print("\n========== SUMMARY ==========")
+    print(f"Passed: {passed}/{total}")
+    if failed:
+        print("Failures:")
+        for name, ok, detail in RESULTS:
+            if not ok:
+                print(f"  X {name}  {detail}")
+    sys.exit(0 if failed == 0 else 1)
+
+
+if __name__ == "__main__":
+    try:
+        main()
+    except SystemExit:
+        raise
+    except Exception:
+        traceback.print_exc()
+        print_summary()

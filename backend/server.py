@@ -1053,6 +1053,195 @@ async def boost_post(data: BoostIn, user: dict = Depends(get_current_user)):
     return public_job(fresh, poster=poster)
 
 
+# ============ STRIPE PAYMENTS (real) ============
+# Catalog of fixed packages — amounts are NEVER taken from the frontend
+STRIPE_PACKAGES = {
+    "pro_monthly": {"amount": 4.99, "label": "QuickGig Pro · 30 days", "kind": "pro"},
+    "background_check": {"amount": 10.00, "label": "Background Check Badge", "kind": "bg"},
+    "boost_24h": {"amount": 2.00, "label": "Boost · 24 hrs", "kind": "boost", "hours": 24},
+    "boost_48h": {"amount": 5.00, "label": "Boost · 48 hrs", "kind": "boost", "hours": 48},
+}
+
+
+def _stripe_client(http_request: Request):
+    api_key = os.environ.get("STRIPE_API_KEY")
+    if not api_key:
+        raise HTTPException(status_code=500, detail="Stripe not configured")
+    from emergentintegrations.payments.stripe.checkout import StripeCheckout  # type: ignore
+    host_url = str(http_request.base_url).rstrip("/")
+    webhook_url = f"{host_url}/api/webhook/stripe"
+    return StripeCheckout(api_key=api_key, webhook_url=webhook_url)
+
+
+class CheckoutIn(BaseModel):
+    package_id: Literal["pro_monthly", "background_check", "boost_24h", "boost_48h"]
+    origin_url: str
+    job_id: Optional[str] = None  # required when package is a boost
+
+
+@api_router.post("/billing/checkout")
+async def create_checkout(
+    data: CheckoutIn,
+    http_request: Request,
+    user: dict = Depends(get_current_user),
+):
+    pkg = STRIPE_PACKAGES.get(data.package_id)
+    if not pkg:
+        raise HTTPException(status_code=400, detail="Unknown package")
+
+    metadata: Dict[str, str] = {
+        "user_id": user["id"],
+        "package_id": data.package_id,
+        "kind": pkg["kind"],
+    }
+    if pkg["kind"] == "boost":
+        if not data.job_id:
+            raise HTTPException(status_code=400, detail="job_id required for boost")
+        j = await db.jobs.find_one({"id": data.job_id}, {"_id": 0, "poster_id": 1})
+        if not j or j["poster_id"] != user["id"]:
+            raise HTTPException(status_code=403, detail="Not your job")
+        metadata["job_id"] = data.job_id
+        metadata["hours"] = str(pkg["hours"])
+
+    origin = (data.origin_url or "").rstrip("/")
+    if not origin:
+        raise HTTPException(status_code=400, detail="origin_url required")
+    success_url = f"{origin}/billing/return?session_id={{CHECKOUT_SESSION_ID}}"
+    cancel_url = f"{origin}/billing/cancel?package={data.package_id}"
+
+    from emergentintegrations.payments.stripe.checkout import (  # type: ignore
+        CheckoutSessionRequest,
+    )
+
+    sc = _stripe_client(http_request)
+    req = CheckoutSessionRequest(
+        amount=float(pkg["amount"]),
+        currency="usd",
+        success_url=success_url,
+        cancel_url=cancel_url,
+        metadata=metadata,
+    )
+    session = await sc.create_checkout_session(req)
+
+    # Record the transaction (status: initiated) BEFORE returning the URL
+    await db.payment_transactions.insert_one(
+        {
+            "id": str(uuid.uuid4()),
+            "session_id": session.session_id,
+            "user_id": user["id"],
+            "package_id": data.package_id,
+            "kind": pkg["kind"],
+            "amount": float(pkg["amount"]),
+            "currency": "usd",
+            "metadata": metadata,
+            "status": "initiated",
+            "payment_status": "unpaid",
+            "credited": False,
+            "created_at": datetime.now(timezone.utc),
+            "updated_at": datetime.now(timezone.utc),
+        }
+    )
+    return {"url": session.url, "session_id": session.session_id}
+
+
+async def _credit_transaction_if_paid(session_id: str, http_request: Request) -> Dict[str, Any]:
+    """Idempotent credit: only flips the user/job flag once per session."""
+    txn = await db.payment_transactions.find_one({"session_id": session_id}, {"_id": 0})
+    if not txn:
+        raise HTTPException(status_code=404, detail="Transaction not found")
+
+    sc = _stripe_client(http_request)
+    status = await sc.get_checkout_status(session_id)
+
+    update: Dict[str, Any] = {
+        "status": status.status,
+        "payment_status": status.payment_status,
+        "updated_at": datetime.now(timezone.utc),
+    }
+
+    if status.payment_status == "paid" and not txn.get("credited"):
+        # Apply credit exactly once
+        kind = txn.get("kind")
+        meta = txn.get("metadata") or {}
+        user_id = meta.get("user_id")
+        if kind == "pro" and user_id:
+            existing = await db.users.find_one({"id": user_id}, {"_id": 0, "pro_expires_at": 1})
+            now = datetime.now(timezone.utc)
+            current = existing.get("pro_expires_at") if existing else None
+            if isinstance(current, datetime):
+                if current.tzinfo is None:
+                    current = current.replace(tzinfo=timezone.utc)
+                base = current if current > now else now
+            else:
+                base = now
+            await db.users.update_one(
+                {"id": user_id},
+                {"$set": {"is_pro": True, "pro_expires_at": base + timedelta(days=30)}},
+            )
+        elif kind == "bg" and user_id:
+            await db.users.update_one(
+                {"id": user_id}, {"$set": {"has_background_check": True}}
+            )
+        elif kind == "boost":
+            job_id = meta.get("job_id")
+            hours = int(meta.get("hours") or 24)
+            if job_id:
+                jdoc = await db.jobs.find_one({"id": job_id}, {"_id": 0, "boosted_until": 1})
+                now = datetime.now(timezone.utc)
+                existing = jdoc.get("boosted_until") if jdoc else None
+                if isinstance(existing, datetime):
+                    if existing.tzinfo is None:
+                        existing = existing.replace(tzinfo=timezone.utc)
+                    base = existing if existing > now else now
+                else:
+                    base = now
+                await db.jobs.update_one(
+                    {"id": job_id},
+                    {"$set": {"boosted_until": base + timedelta(hours=hours)}},
+                )
+        update["credited"] = True
+
+    await db.payment_transactions.update_one(
+        {"session_id": session_id}, {"$set": update}
+    )
+    return {
+        "session_id": session_id,
+        "status": status.status,
+        "payment_status": status.payment_status,
+        "amount_total": status.amount_total,
+        "currency": status.currency,
+        "credited": update.get("credited", txn.get("credited", False)),
+    }
+
+
+@api_router.get("/billing/checkout/status/{session_id}")
+async def checkout_status(
+    session_id: str, http_request: Request, user: dict = Depends(get_current_user)
+):
+    return await _credit_transaction_if_paid(session_id, http_request)
+
+
+@api_router.post("/webhook/stripe")
+async def stripe_webhook(http_request: Request):
+    sig = http_request.headers.get("Stripe-Signature") or http_request.headers.get(
+        "stripe-signature"
+    )
+    body = await http_request.body()
+    sc = _stripe_client(http_request)
+    try:
+        evt = await sc.handle_webhook(body, sig)
+    except Exception as e:
+        logging.warning(f"Stripe webhook error: {e}")
+        raise HTTPException(status_code=400, detail="Invalid webhook")
+    # Same idempotent credit path
+    if evt.session_id:
+        try:
+            await _credit_transaction_if_paid(evt.session_id, http_request)
+        except Exception as e:
+            logging.warning(f"Webhook credit failed: {e}")
+    return {"received": True}
+
+
 # ============ SEED + STARTUP ============
 
 async def seed_admin():

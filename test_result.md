@@ -442,23 +442,181 @@ frontend:
               ✅ q=pricey & pay_type=hourly → only $45 hourly
               ✅ category=moving & min_pay=50 → only the $80 moving job
 
+  - task: "Stripe Checkout integration (real payments)"
+    implemented: true
+    working: false
+    file: "/app/backend/server.py, /app/frontend/src/billing.ts, /app/frontend/app/upgrade.tsx, /app/frontend/app/(tabs)/post.tsx"
+    stuck_count: 1
+    priority: "high"
+    needs_retesting: true
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Replaced the 3 mocked monetization flows with real Stripe Checkout
+            sessions via emergentintegrations.payments.stripe.checkout. New
+            endpoints: POST /api/billing/checkout (creates session),
+            GET /api/billing/checkout/status/{id} (idempotent credit), and
+            POST /api/webhook/stripe. Server-side catalog: pro_monthly $4.99
+            (30 days), background_check $10 (one-time), boost_24h $2,
+            boost_48h $5. Frontend uses expo-web-browser to open the hosted
+            checkout. Uses STRIPE_API_KEY=sk_test_emergent for test mode.
+            New collection: payment_transactions (audit trail with
+            credited boolean for idempotency).
+        - working: false
+          agent: "testing"
+          comment: |
+            BACKEND TEST RESULT: 15 PASSED / 1 CRITICAL FAIL (test harness at
+            /app/backend_test.py, ran against live backend
+            https://task-connect-81.preview.emergentagent.com/api).
+
+            ✅ T1a/T1b Auth required: POST /billing/checkout and
+               GET /billing/checkout/status/{id} both return 401 without token.
+            ✅ T2 Price manipulation: posting body {amount: 0.01, price: 1,
+               currency: "eur"} is IGNORED — server uses catalog $4.99 USD.
+               Confirmed via payment_transactions row (amount=4.99, currency=usd,
+               package_id=pro_monthly).
+            ✅ T3 Invalid package_id → 422 (Pydantic Literal rejects before
+               STRIPE_PACKAGES lookup; spec said 400, but 422 is an equivalent
+               4xx rejection — acceptable).
+            ✅ T4a missing origin_url → 422 (Pydantic).
+            ✅ T4b empty origin_url → 400 ("origin_url required").
+            ✅ T5 Boost ownership: user A trying to boost user B's job →
+               403 "Not your job".
+            ✅ T6 boost_24h without job_id → 400 "job_id required for boost".
+            ✅ T7a Successful create returns url containing "stripe"
+               (https://checkout.stripe.com/c/pay/cs_test_...) + session_id.
+            ✅ T7b payment_transactions row correctly populated with
+               status=initiated, credited=false, amount=10.00, currency=usd,
+               package_id=background_check.
+            ❌ T8 POLLING STATUS — CRITICAL: GET /api/billing/checkout/status/
+               {session_id} returns 500 Internal Server Error every time (5/5
+               polls failed) for sessions just created. Backend logs show:
+
+                 File "/app/backend/server.py", line 1154, in _credit_transaction_if_paid
+                   status = await sc.get_checkout_status(session_id)
+                 emergentintegrations.payments.stripe.checkout.CheckoutError:
+                   Failed to retrieve session status: Request req_...: No
+                   such checkout.session: cs_test_a15mrgzm1tWkVY24pJUl0Mi...
+
+               ROOT CAUSE is in the emergentintegrations library itself, not
+               main-agent code. Isolated repro (outside FastAPI):
+
+                 sc = StripeCheckout(api_key="sk_test_emergent", webhook_url=...)
+                 sess = await sc.create_checkout_session(req)   # OK
+                 await sc.get_checkout_status(sess.session_id)  # FAILS ~95%
+
+               The create succeeds (real cs_test_* ID + valid checkout URL is
+               returned and visible in Stripe test dashboard), but retrieve
+               calls fail with either:
+                 (a) "No such checkout.session: cs_test_..." (most of the time)
+                 (b) "1 validation error for CheckoutStatusResponse metadata
+                     Input should be a valid dictionary [type=dict_type,
+                     input_value=<StripeObject at 0x...>]" (sometimes)
+               Errors are interleaved / intermittent → the library appears to
+               either (1) route create vs retrieve to different Stripe test
+               accounts / keys, OR (2) have a pydantic parsing bug when
+               Stripe returns `metadata` as a StripeObject instead of a dict.
+
+               IMPACT: every real user returning from Stripe hosted checkout
+               will trigger GET /billing/checkout/status/{id} → 500. The app
+               CANNOT credit pro_monthly, background_check, or boost purchases
+               via the polling path. Since the webhook path ALSO calls
+               `_credit_transaction_if_paid` which calls the same broken
+               `sc.get_checkout_status`, webhook-driven credit is equally
+               broken. Backend logs also show:
+                 "Stripe webhook error: Unexpected error processing webhook: 'id'"
+               on valid-but-malformed events.
+
+               FIX OPTIONS FOR MAIN AGENT:
+                 A) Wrap sc.get_checkout_status() in try/except inside
+                    _credit_transaction_if_paid — on CheckoutError return a
+                    synthetic {"status":"open","payment_status":"unpaid",
+                    "amount_total": int(txn.amount*100), "currency":"usd",
+                    "credited": txn.get("credited", False)} so the frontend
+                    can keep polling gracefully until Stripe catches up or
+                    the user closes the modal. At minimum this stops the 500.
+                 B) Bypass emergentintegrations for status checks — call
+                    `stripe.checkout.Session.retrieve(session_id,
+                    api_key=STRIPE_API_KEY)` directly (stripe-python is
+                    already installed). This avoids the buggy pydantic parser
+                    in emergentintegrations.
+                 C) Pin emergentintegrations to an older version where
+                    get_checkout_status works (requires investigation).
+               Recommend (B) as it's the minimal-risk, root-cause fix.
+
+            ✅ T9a Webhook without Stripe-Signature → 400.
+            ✅ T9b Webhook with bogus Stripe-Signature → 400.
+            ✅ T10a Mock /billing/subscribe-pro still returns is_pro=true.
+            ✅ T10b Mock /billing/background-check still returns
+               has_background_check=true.
+            ✅ T10c Mock /billing/boost-post still returns is_boosted=true
+               for the poster's own job.
+
+            SUMMARY: endpoint plumbing, auth, validation, price-manipulation
+            protection, ownership checks, webhook signature validation, and
+            backward-compat mock endpoints all work correctly. The ONLY
+            blocker is the 500 on GET /billing/checkout/status/{id}, caused
+            by the emergentintegrations library's get_checkout_status method.
+            Until this is fixed, the Stripe purchase flow cannot credit any
+            user on return. Main agent should apply fix option (B) above.
+
+
             All responses returned 200 in well under 1s; backend.err.log shows
             no exceptions during the run. Push-notification endpoints were
             NOT re-tested (already verified previously).
 
 metadata:
   created_by: "main_agent"
-  version: "1.3"
-  test_sequence: 3
+  version: "1.4"
+  test_sequence: 4
   run_ui: false
 
 test_plan:
-  current_focus: []
+  current_focus:
+    - "Stripe Checkout integration (real payments)"
   stuck_tasks: []
   test_all: false
   test_priority: "high_first"
 
 agent_communication:
+    - agent: "main"
+      message: |
+        Stripe Checkout integration added. New endpoints:
+          POST /api/billing/checkout                (auth, body: {package_id,
+                                                     origin_url, job_id?})
+          GET  /api/billing/checkout/status/{id}    (auth, idempotent credit)
+          POST /api/webhook/stripe                  (validates Stripe-Signature)
+
+        Packages (server-defined, frontend cannot manipulate):
+          pro_monthly       $4.99  → +30 days is_pro
+          background_check  $10.00 → has_background_check=true
+          boost_24h         $2.00  → +24h job.boosted_until
+          boost_48h         $5.00  → +48h job.boosted_until
+
+        STRIPE_API_KEY=sk_test_emergent in /app/backend/.env (test mode).
+        New collection: payment_transactions.
+
+        TESTS (do not call real card flows — just exercise the endpoints):
+          1. Auth: 401 when no token on POST /billing/checkout and on
+             GET /billing/checkout/status/xxx.
+          2. Pricing manipulation: posting amount in the body must be
+             ignored; the session always uses the catalog price.
+          3. Invalid package_id → 400.
+          4. Missing origin_url → 400.
+          5. Boost ownership: passing job_id of another user's job → 403.
+          6. Boost without job_id → 400.
+          7. Successful create returns {url contains "stripe", session_id}
+             and payment_transactions has status=initiated, credited=false.
+          8. Polling status 5x in a row returns 200 each time with
+             payment_status=unpaid (since checkout wasn't completed by
+             a real card) and no duplicate DB writes / no exceptions.
+          9. Webhook with invalid signature → 400.
+         10. Mock endpoints (subscribe-pro, background-check, boost-post)
+             still work for backward-compat (admin grants).
+
+        Do NOT re-test push / filters / chat-close — verified previously.
+
     - agent: "main"
       message: |
         Added a safety feature: conversations automatically close 8 hours after
@@ -706,3 +864,69 @@ agent_communication:
         Chat-auto-closes-8h feature is working end-to-end on the backend.
         Frontend not tested per request. No further backend retesting
         needed.
+
+
+    - agent: "testing"
+      message: |
+        Stripe Checkout integration tested — 15/16 PASS, 1 CRITICAL FAIL.
+        Test harness: /app/backend_test.py  (pymongo + httpx, hits live
+        backend at https://task-connect-81.preview.emergentagent.com/api).
+        Used two fresh real-looking users
+        (emma.rodriguez.*@example.com, liam.thompson.*@example.com).
+
+        ✅ PASSING:
+          • Auth enforcement on POST /billing/checkout and
+            GET /billing/checkout/status/{id} → 401 without token.
+          • Price manipulation ignored — posting {amount:0.01,currency:"eur"}
+            still creates a $4.99 USD session; payment_transactions row shows
+            amount=4.99, currency=usd, package_id=pro_monthly.
+          • Invalid package_id → 422 (Pydantic Literal rejection, 4xx OK).
+          • Missing origin_url → 422; empty origin_url → 400.
+          • Boost of another user's job_id → 403 "Not your job".
+          • boost_24h without job_id → 400 "job_id required for boost".
+          • Successful create returns {url, session_id} with url prefixed
+            https://checkout.stripe.com/c/pay/cs_test_... and a
+            payment_transactions row created with status=initiated,
+            credited=false, amount=10.00, currency=usd.
+          • Webhook without Stripe-Signature → 400; bogus signature → 400.
+          • Mock backward-compat endpoints (subscribe-pro, background-check,
+            boost-post) still work and flip the right flags.
+
+        ❌ CRITICAL — GET /api/billing/checkout/status/{session_id}
+           returns 500 Internal Server Error every time (5/5 polls).
+           Stack trace:
+             File "/app/backend/server.py", line 1154, in
+                  _credit_transaction_if_paid
+               status = await sc.get_checkout_status(session_id)
+             emergentintegrations.payments.stripe.checkout.CheckoutError:
+               Failed to retrieve session status: ... No such
+               checkout.session: cs_test_...
+
+           Reproduced in isolation (no FastAPI):
+             sc = StripeCheckout(api_key="sk_test_emergent", webhook_url=...)
+             sess = await sc.create_checkout_session(req)   # OK
+             await sc.get_checkout_status(sess.session_id)  # fails ~95%
+           Two alternating failure modes observed:
+             (a) Stripe 404 "No such checkout.session" for the ID we just
+                 created (suggests the library routes create vs retrieve to
+                 different Stripe test accounts).
+             (b) Pydantic "1 validation error for CheckoutStatusResponse
+                 metadata Input should be a valid dictionary" — library bug
+                 when Stripe returns metadata as a StripeObject.
+
+           Impact: the real user flow (complete checkout on hosted Stripe
+           page → WebBrowser redirects back → frontend polls status to
+           credit) is completely broken. Webhook path calls the same
+           _credit_transaction_if_paid, so webhook-driven credit is equally
+           broken.
+
+           Recommended fix for main agent: bypass emergentintegrations for
+           status reads and call `stripe.checkout.Session.retrieve(
+           session_id, api_key=STRIPE_API_KEY)` directly (stripe-python is
+           already installed). At minimum, wrap sc.get_checkout_status() in
+           try/except and return a synthetic {status:"open",
+           payment_status:"unpaid", credited: txn["credited"]} on failure so
+           the frontend can keep polling gracefully without a 500.
+
+        Not testing push / filters / chat-close per request — they remain
+        verified in prior runs.

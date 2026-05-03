@@ -20,6 +20,7 @@ import { MapPin, Camera, X, Plus, ShieldAlert, ShieldCheck } from "lucide-react-
 import { api, CATEGORIES } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, brutal } from "../../src/theme";
+import { startCheckout } from "../../src/billing";
 
 export default function PostJob() {
   const router = useRouter();
@@ -175,13 +176,26 @@ export default function PostJob() {
           photos,
         },
       });
-      // Apply boost if selected (MOCKED payment)
+      // Apply boost if selected — opens real Stripe Checkout
       if (boostPlan) {
         try {
-          await api("/billing/boost-post", {
-            method: "POST",
-            body: { job_id: job.id, plan: boostPlan },
-          });
+          const pkg = boostPlan === "24h" ? "boost_24h" : "boost_48h";
+          const status = await startCheckout(pkg as any, { jobId: job.id });
+          if (status?.payment_status !== "paid") {
+            Alert.alert(
+              "Job posted",
+              "Your gig is live. Boost wasn't completed — you can boost it later from the job page."
+            );
+            // reset and bail early
+            setTitle("");
+            setDescription("");
+            setPayAmount("");
+            setAddress("");
+            setPhotos([]);
+            setBoostPlan(null);
+            router.push(`/job/${job.id}`);
+            return;
+          }
         } catch (boostErr: any) {
           Alert.alert("Posted but boost failed", boostErr.message);
         }
@@ -189,7 +203,7 @@ export default function PostJob() {
       Alert.alert(
         "Job posted!",
         boostPlan
-          ? `Your gig is now live and boosted for ${boostPlan === "24h" ? "24" : "48"} hours. (Demo — no real charge.)`
+          ? `Your gig is now live and boosted for ${boostPlan === "24h" ? "24" : "48"} hours.`
           : "Your gig is now live."
       );
       // reset
@@ -367,7 +381,7 @@ export default function PostJob() {
             />
           </View>
           <Text style={styles.boostNote}>
-            🚀 Boosted posts appear at the top of Browse with a glowing ribbon. (Demo — no real charge yet.)
+            🚀 Boosted posts appear at the top of Browse with a glowing ribbon. You'll be charged at checkout.
           </Text>
 
           <TouchableOpacity

@@ -15,6 +15,7 @@ import { ArrowLeft, Check, Sparkles, ShieldCheck, Star, Zap, Crown } from "lucid
 import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { colors, brutal } from "../src/theme";
+import { startCheckout } from "../src/billing";
 
 export default function Upgrade() {
   const router = useRouter();
@@ -27,10 +28,19 @@ export default function Upgrade() {
   const subscribePro = async () => {
     setBusy("pro");
     try {
-      const u = await api("/billing/subscribe-pro", { method: "POST" });
-      setUser(u);
-      await refresh();
-      Alert.alert("You're Pro now! 👑", "Pro is active for 30 days. (Demo — no real charge.)");
+      const status = await startCheckout("pro_monthly");
+      if (!status) return; // web flow navigates away
+      if (status.payment_status === "paid") {
+        await refresh();
+        Alert.alert("You're Pro now! 👑", "Pro is active for 30 days.");
+      } else if (status.status === "expired") {
+        Alert.alert("Checkout expired", "Please try again.");
+      } else {
+        Alert.alert(
+          "Payment not completed",
+          "If you completed checkout, your status may take a moment to update."
+        );
+      }
     } catch (e: any) {
       Alert.alert("Error", e.message);
     } finally {
@@ -39,34 +49,43 @@ export default function Upgrade() {
   };
 
   const cancelPro = async () => {
-    Alert.alert("Cancel Pro?", "You'll lose the Pro badge and priority placement.", [
-      { text: "Keep Pro" },
-      {
-        text: "Cancel",
-        style: "destructive",
-        onPress: async () => {
-          setBusy("pro-cancel");
-          try {
-            const u = await api("/billing/cancel-pro", { method: "POST" });
-            setUser(u);
-            await refresh();
-          } catch (e: any) {
-            Alert.alert("Error", e.message);
-          } finally {
-            setBusy(null);
-          }
+    Alert.alert(
+      "Cancel Pro?",
+      "This stops auto-renew. You'll keep Pro until the end of your current 30 days.",
+      [
+        { text: "Keep Pro" },
+        {
+          text: "OK",
+          style: "destructive",
+          onPress: async () => {
+            // Note: each $4.99 grant is one-time and expires automatically.
+            // Nothing to charge or cancel — the existing pro_expires_at runs out.
+            Alert.alert(
+              "Got it",
+              "Pro will expire on its own and won't renew. No further charges."
+            );
+          },
         },
-      },
-    ]);
+      ]
+    );
   };
 
   const buyBgCheck = async () => {
     setBusy("bg");
     try {
-      const u = await api("/billing/background-check", { method: "POST" });
-      setUser(u);
-      await refresh();
-      Alert.alert("Background-checked! ✅", "Your profile now shows the upgraded safety badge. (Demo — no real charge.)");
+      const status = await startCheckout("background_check");
+      if (!status) return;
+      if (status.payment_status === "paid") {
+        await refresh();
+        Alert.alert("Background-checked! ✅", "Your profile now shows the safety badge.");
+      } else if (status.status === "expired") {
+        Alert.alert("Checkout expired", "Please try again.");
+      } else {
+        Alert.alert(
+          "Payment not completed",
+          "If you completed checkout, your status may take a moment to update."
+        );
+      }
     } catch (e: any) {
       Alert.alert("Error", e.message);
     } finally {
