@@ -459,6 +459,16 @@ def public_job(j: dict, poster: Optional[dict] = None, worker: Optional[dict] = 
         "created_at": j["created_at"].isoformat() if isinstance(j.get("created_at"), datetime) else j.get("created_at"),
         "accepted_at": j["accepted_at"].isoformat() if isinstance(j.get("accepted_at"), datetime) else j.get("accepted_at"),
         "completed_at": j["completed_at"].isoformat() if isinstance(j.get("completed_at"), datetime) else j.get("completed_at"),
+        "abandonments": [
+            {
+                "worker_id": a.get("worker_id"),
+                "worker_name": a.get("worker_name", ""),
+                "withdrew_at": a["withdrew_at"].isoformat()
+                if isinstance(a.get("withdrew_at"), datetime)
+                else a.get("withdrew_at"),
+            }
+            for a in (j.get("abandonments") or [])
+        ],
     }
 
 
@@ -678,8 +688,14 @@ async def complete_job(job_id: str, user: dict = Depends(get_current_user)):
     j = await db.jobs.find_one({"id": job_id}, {"_id": 0})
     if not j:
         raise HTTPException(status_code=404, detail="Job not found")
-    if user["id"] not in [j.get("poster_id"), j.get("worker_id")]:
-        raise HTTPException(status_code=403, detail="Not your job")
+    # Only the POSTER can mark a job complete. Workers cannot self-confirm the
+    # job was done — this prevents a worker from closing a job the poster
+    # hasn't actually received yet.
+    if j.get("poster_id") != user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the job poster can mark this job complete.",
+        )
     if j["status"] != "accepted":
         raise HTTPException(status_code=400, detail="Job is not in accepted state")
     await db.jobs.update_one(
@@ -692,16 +708,62 @@ async def complete_job(job_id: str, user: dict = Depends(get_current_user)):
     fresh = await db.jobs.find_one({"id": job_id}, {"_id": 0})
     poster = await db.users.find_one({"id": j["poster_id"]}, {"_id": 0})
     worker = await db.users.find_one({"id": j["worker_id"]}, {"_id": 0}) if j.get("worker_id") else None
-    # 🔔 Notify the other party that the job was marked complete
-    other_id = j.get("worker_id") if user["id"] == j["poster_id"] else j["poster_id"]
-    if other_id:
+    # 🔔 Notify the worker that the job was marked complete
+    if j.get("worker_id"):
         await notify_user(
-            other_id,
+            j["worker_id"],
             "✅ Job marked complete",
             f"\"{j['title']}\" was marked complete. Leave a review!",
             {"type": "job_completed", "job_id": job_id},
         )
     return public_job(fresh, poster=poster, worker=worker)
+
+
+@api_router.post("/jobs/{job_id}/withdraw")
+async def withdraw_job(job_id: str, user: dict = Depends(get_current_user)):
+    """Worker withdraws / backs out of a job they accepted.
+    The job goes back to status="open" so a new worker can pick it up, and the
+    abandonment is recorded so the poster can still leave a review on the
+    flaky worker (e.g., no-show)."""
+    j = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    if not j:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if j.get("worker_id") != user["id"]:
+        raise HTTPException(
+            status_code=403,
+            detail="Only the worker who accepted this job can withdraw.",
+        )
+    if j["status"] != "accepted":
+        raise HTTPException(
+            status_code=400,
+            detail="Can only withdraw from a job that's in progress.",
+        )
+    abandonment_record = {
+        "worker_id": user["id"],
+        "worker_name": user.get("name", ""),
+        "withdrew_at": datetime.now(timezone.utc),
+    }
+    await db.jobs.update_one(
+        {"id": job_id},
+        {
+            "$set": {
+                "status": "open",
+                "worker_id": None,
+                "accepted_at": None,
+            },
+            "$push": {"abandonments": abandonment_record},
+        },
+    )
+    # 🔔 Notify the poster
+    await notify_user(
+        j["poster_id"],
+        "⚠️ Worker withdrew",
+        f"{user.get('name') or 'A worker'} backed out of \"{j['title']}\". Your job is back open.",
+        {"type": "job_withdrawn", "job_id": job_id, "worker_id": user["id"]},
+    )
+    fresh = await db.jobs.find_one({"id": job_id}, {"_id": 0})
+    poster = await db.users.find_one({"id": j["poster_id"]}, {"_id": 0})
+    return public_job(fresh, poster=poster, worker=None)
 
 
 @api_router.post("/jobs/{job_id}/cancel")
@@ -852,17 +914,52 @@ async def create_review(data: ReviewIn, user: dict = Depends(get_current_user)):
     job = await db.jobs.find_one({"id": data.job_id}, {"_id": 0})
     if not job:
         raise HTTPException(status_code=404, detail="Job not found")
-    if job["status"] != "completed":
-        raise HTTPException(status_code=400, detail="Job not completed yet")
-    if user["id"] not in [job["poster_id"], job.get("worker_id")]:
+
+    poster_id = job["poster_id"]
+    worker_id = job.get("worker_id")
+    abandonment_worker_ids = [
+        a.get("worker_id") for a in (job.get("abandonments") or []) if a.get("worker_id")
+    ]
+    # Anyone who was involved with this job at any point is allowed to be
+    # reviewed: the current worker, the poster, or any worker who abandoned.
+    valid_participants = set(
+        [poster_id] + ([worker_id] if worker_id else []) + abandonment_worker_ids
+    )
+
+    # The reviewer must be a participant too.
+    if user["id"] not in valid_participants:
         raise HTTPException(status_code=403, detail="Not your job")
-    if data.reviewee_id not in [job["poster_id"], job.get("worker_id")] or data.reviewee_id == user["id"]:
+    if data.reviewee_id == user["id"] or data.reviewee_id not in valid_participants:
         raise HTTPException(status_code=400, detail="Invalid reviewee")
+
+    # Gating: a review is only allowed if
+    #   (a) the job was completed (classic happy path), OR
+    #   (b) there's an abandonment pair on this job linking the reviewer and reviewee
+    is_completed_review = job["status"] == "completed" and (
+        user["id"] in [poster_id, worker_id] and data.reviewee_id in [poster_id, worker_id]
+    )
+    # Abandonment case: poster reviewing an abandoned worker, or abandoned worker reviewing poster.
+    is_abandonment_review = (
+        user["id"] == poster_id and data.reviewee_id in abandonment_worker_ids
+    ) or (
+        user["id"] in abandonment_worker_ids and data.reviewee_id == poster_id
+    )
+    if not (is_completed_review or is_abandonment_review):
+        raise HTTPException(
+            status_code=400,
+            detail="Reviews are only allowed after a job is completed or if a worker withdrew.",
+        )
+
     existing = await db.reviews.find_one(
-        {"job_id": data.job_id, "reviewer_id": user["id"]}, {"_id": 0}
+        {
+            "job_id": data.job_id,
+            "reviewer_id": user["id"],
+            "reviewee_id": data.reviewee_id,
+        },
+        {"_id": 0},
     )
     if existing:
-        raise HTTPException(status_code=400, detail="You already reviewed this job")
+        raise HTTPException(status_code=400, detail="You already reviewed this person for this job")
     review = {
         "id": str(uuid.uuid4()),
         "job_id": data.job_id,

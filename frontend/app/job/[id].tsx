@@ -19,6 +19,8 @@ import {
   CheckCircle2,
   MessageCircle,
   XCircle,
+  LogOut,
+  UserX,
 } from "lucide-react-native";
 import { api, categoryMeta } from "../../src/api";
 import { useAuth } from "../../src/auth";
@@ -76,6 +78,41 @@ export default function JobDetail() {
     }
   };
 
+  const withdraw = async () => {
+    Alert.alert(
+      "Withdraw from job?",
+      "The job will go back to open and the poster will be notified that you backed out. They may still leave a review.",
+      [
+        { text: "Keep working" },
+        {
+          text: "Withdraw",
+          style: "destructive",
+          onPress: async () => {
+            setBusy(true);
+            try {
+              await api(`/jobs/${id}/withdraw`, { method: "POST" });
+              Alert.alert(
+                "Withdrew",
+                "You're no longer on this job. Want to leave a review for the poster?",
+                [
+                  { text: "Not now", style: "cancel", onPress: () => router.back() },
+                  {
+                    text: "Leave review",
+                    onPress: () => router.replace(`/review/${id}`),
+                  },
+                ]
+              );
+            } catch (e: any) {
+              Alert.alert("Error", e.message);
+            } finally {
+              setBusy(false);
+            }
+          },
+        },
+      ]
+    );
+  };
+
   const cancel = async () => {
     Alert.alert("Cancel job?", "This cannot be undone.", [
       { text: "Keep" },
@@ -120,8 +157,15 @@ export default function JobDetail() {
   const isPoster = user?.id === job.poster_id;
   const isWorker = user?.id === job.worker_id;
   const canAccept = job.status === "open" && !isPoster && user?.is_verified;
-  const canComplete = job.status === "accepted" && (isPoster || isWorker);
-  const canReview = job.status === "completed" && (isPoster || isWorker);
+  // Only POSTER can mark complete
+  const canComplete = job.status === "accepted" && isPoster;
+  // Only WORKER can withdraw
+  const canWithdraw = job.status === "accepted" && isWorker;
+  // Completed-job review CTA (existing)
+  const canReviewCompleted =
+    job.status === "completed" && (isPoster || isWorker);
+  // Abandoned-worker review CTA (poster reviews a worker who withdrew)
+  const abandonments: any[] = Array.isArray(job.abandonments) ? job.abandonments : [];
 
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
@@ -259,7 +303,20 @@ export default function JobDetail() {
             </TouchableOpacity>
           ) : null}
 
-          {canReview ? (
+          {canWithdraw ? (
+            <TouchableOpacity
+              testID="withdraw-btn"
+              style={styles.withdrawBtn}
+              onPress={withdraw}
+              disabled={busy}
+              activeOpacity={0.85}
+            >
+              <LogOut size={18} color="#fff" strokeWidth={2.6} />
+              <Text style={styles.withdrawText}>Withdraw from Job</Text>
+            </TouchableOpacity>
+          ) : null}
+
+          {canReviewCompleted ? (
             <TouchableOpacity
               testID="review-btn"
               style={brutal.buttonPrimary}
@@ -268,6 +325,39 @@ export default function JobDetail() {
               <Star size={18} color="#fff" strokeWidth={2.4} />
               <Text style={brutal.buttonText}>Leave Review</Text>
             </TouchableOpacity>
+          ) : null}
+
+          {/* Poster can still review workers who abandoned, even if job is now re-open */}
+          {isPoster && abandonments.length > 0 ? (
+            <View style={styles.abandonBlock} testID="abandonment-list">
+              <Text style={styles.abandonTitle}>
+                {abandonments.length === 1
+                  ? "A worker backed out of this job"
+                  : `${abandonments.length} workers backed out of this job`}
+              </Text>
+              <Text style={styles.abandonSub}>
+                Leave a review so other posters know.
+              </Text>
+              {abandonments.map((a, idx) => (
+                <TouchableOpacity
+                  key={`${a.worker_id}-${idx}`}
+                  testID={`review-abandoned-${idx}`}
+                  style={styles.abandonRow}
+                  onPress={() =>
+                    router.push(
+                      `/review/${job.id}?revieweeId=${a.worker_id}&name=${encodeURIComponent(a.worker_name || "worker")}`
+                    )
+                  }
+                  activeOpacity={0.85}
+                >
+                  <UserX size={16} color="#991B1B" strokeWidth={2.6} />
+                  <Text style={styles.abandonRowText} numberOfLines={1}>
+                    Review {a.worker_name || "worker"}
+                  </Text>
+                  <Star size={14} color="#991B1B" strokeWidth={2.6} />
+                </TouchableOpacity>
+              ))}
+            </View>
           ) : null}
 
           {isPoster && job.status === "open" ? (
@@ -373,4 +463,40 @@ const styles = StyleSheet.create({
   },
   ratingRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 2 },
   ratingText: { fontWeight: "700", color: colors.text },
+
+  withdrawBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#B91C1C",
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 16,
+  },
+  withdrawText: { color: "#fff", fontWeight: "800", fontSize: 15.5, letterSpacing: -0.2 },
+
+  abandonBlock: {
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1,
+    borderColor: "#FECACA",
+    borderRadius: 16,
+    padding: 14,
+    gap: 8,
+    marginTop: 4,
+  },
+  abandonTitle: { fontWeight: "800", color: "#991B1B", fontSize: 14, letterSpacing: -0.2 },
+  abandonSub: { fontWeight: "500", color: "#991B1B", fontSize: 12 },
+  abandonRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#fff",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  abandonRowText: { flex: 1, fontWeight: "700", color: "#991B1B", fontSize: 13 },
 });

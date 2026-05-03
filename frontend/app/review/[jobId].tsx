@@ -18,7 +18,11 @@ import { useAuth } from "../../src/auth";
 import { colors, brutal } from "../../src/theme";
 
 export default function Review() {
-  const { jobId } = useLocalSearchParams<{ jobId: string }>();
+  const { jobId, revieweeId: revieweeIdParam, name: nameParam } = useLocalSearchParams<{
+    jobId: string;
+    revieweeId?: string;
+    name?: string;
+  }>();
   const router = useRouter();
   const { user } = useAuth();
   const [job, setJob] = useState<any>(null);
@@ -42,8 +46,31 @@ export default function Review() {
 
   if (loading || !job || !user) return null;
 
-  const revieweeId = user.id === job.poster_id ? job.worker_id : job.poster_id;
-  const reviewee = user.id === job.poster_id ? job.worker : job.poster;
+  // Figure out who we're reviewing:
+  //   1. If the caller passed ?revieweeId=... in the URL, use that (handles
+  //      the "poster reviews abandoned worker" case where the worker is no
+  //      longer attached to the job).
+  //   2. Else, classic: the "other party" on the current job.
+  //   3. Else (worker-withdrew-self case): poster if this user is an abandoner.
+  const abandonments: any[] = Array.isArray(job.abandonments) ? job.abandonments : [];
+  const isAbandoner = abandonments.some((a: any) => a.worker_id === user.id);
+
+  let revieweeId: string | undefined = revieweeIdParam;
+  let revieweeName: string | undefined = nameParam;
+
+  if (!revieweeId) {
+    if (user.id === job.poster_id) {
+      revieweeId = job.worker_id;
+      revieweeName = job.worker?.name;
+    } else if (user.id === job.worker_id) {
+      revieweeId = job.poster_id;
+      revieweeName = job.poster?.name;
+    } else if (isAbandoner) {
+      // A worker who withdrew — can still review the poster
+      revieweeId = job.poster_id;
+      revieweeName = job.poster?.name;
+    }
+  }
 
   if (!revieweeId) {
     return (
@@ -52,6 +79,8 @@ export default function Review() {
       </SafeAreaView>
     );
   }
+
+  const reviewee = { name: revieweeName || "user" };
 
   const submit = async () => {
     setSubmitting(true);

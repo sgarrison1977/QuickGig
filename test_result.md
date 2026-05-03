@@ -725,10 +725,74 @@ frontend:
             No 5xx, no exceptions in backend.err.log during the run.
             Endpoint regression is clean.
 
+  - task: "Job lifecycle: poster-only complete, worker-only withdraw, abandonment reviews, abandonments[] in payload"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: |
+            VERIFIED — 48/48 PASS (harness: /app/backend_test_lifecycle.py vs
+            live https://task-connect-81.preview.emergentagent.com/api).
+            Three fresh real-looking users registered + DB-verified
+            (olivia.bennett.*@example.com poster, marcus.reeves.*@example.com
+            worker, liam.foster.*@example.com second worker).
+
+            POST /jobs/{id}/complete (poster-only):
+              ✅ Worker calling /complete on accepted job → 403 with detail
+                 exactly "Only the job poster can mark this job complete."
+              ✅ Poster /complete on accepted job → 200, status=completed,
+                 worker_id preserved.
+              ✅ /complete on already-completed job → 400 ("Job is not in
+                 accepted state").
+
+            POST /jobs/{id}/withdraw (worker-only, NEW):
+              ✅ Current worker /withdraw on accepted job → 200; response
+                 shows status=open, worker_id=null, accepted_at=null,
+                 abandonments length=1 with {worker_id, worker_name,
+                 withdrew_at}.
+              ✅ After re-acceptance by W2, original worker calling
+                 /withdraw → 403 with detail exactly "Only the worker who
+                 accepted this job can withdraw."
+              ✅ /withdraw on completed job → 400 with detail exactly
+                 "Can only withdraw from a job that's in progress."
+              ✅ /withdraw on a non-existent job_id → 404.
+              ✅ /withdraw on an open (non-accepted) job by a non-worker
+                 → 403 (worker_id mismatch checked before status).
+
+            POST /reviews (abandonment-aware):
+              ✅ Poster → current worker (W2, completed) → 200.
+              ✅ Poster → abandoned worker (W, same job) → 200.
+                 (reviewee_id distinct, both reviews persisted.)
+              ✅ Abandoned worker (W) → poster → 200.
+              ✅ Same reviewer trying same reviewee on same job again
+                 → 400 with detail exactly
+                 "You already reviewed this person for this job".
+
+            Job response payload:
+              ✅ Newly-created job has abandonments=[].
+              ✅ After withdraw, abandonments=[{worker_id=W, worker_name="Marcus
+                 Reeves", withdrew_at=ISO-8601}].
+              ✅ GET /api/jobs/{id} returns abandonments list with same
+                 contents.
+              ✅ Listing GET /api/jobs returns abandonments[] on every job
+                 (regression / no payload break).
+
+            Regression:
+              ✅ admin@quickgig.app / admin123 login → 200, role=admin.
+              ✅ GET /api/jobs?category=all&status=open&sort=best → 200,
+                 returns array; all entries carry abandonments[] key.
+
+            No 5xx, no exceptions in backend.err.log during the run.
+
 metadata:
   created_by: "main_agent"
-  version: "1.6"
-  test_sequence: 6
+  version: "1.7"
+  test_sequence: 7
   run_ui: false
 
 test_plan:
