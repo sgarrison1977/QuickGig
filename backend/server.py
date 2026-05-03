@@ -1266,22 +1266,53 @@ async def checkout_status(
 
 @api_router.post("/webhook/stripe")
 async def stripe_webhook(http_request: Request):
+    """Verifies Stripe-Signature with our webhook secret and credits the
+    relevant transaction when checkout.session.completed fires."""
     sig = http_request.headers.get("Stripe-Signature") or http_request.headers.get(
         "stripe-signature"
     )
     body = await http_request.body()
-    sc = _stripe_client(http_request)
+    secret = os.environ.get("STRIPE_WEBHOOK_SECRET")
+    if not secret:
+        # No secret configured — refuse all webhooks rather than silently accepting
+        raise HTTPException(status_code=500, detail="Webhook secret not configured")
+    if not sig:
+        raise HTTPException(status_code=400, detail="Missing signature")
+
+    stripe = _stripe_client(http_request)
     try:
-        evt = await sc.handle_webhook(body, sig)
+        event = stripe.Webhook.construct_event(body, sig, secret)
     except Exception as e:
-        logging.warning(f"Stripe webhook error: {e}")
-        raise HTTPException(status_code=400, detail="Invalid webhook")
-    # Same idempotent credit path
-    if evt.session_id:
+        logging.warning(f"Stripe webhook signature failed: {e}")
+        raise HTTPException(status_code=400, detail="Invalid signature")
+
+    # Only act on completed/expired checkout sessions
+    etype = event.get("type") if hasattr(event, "get") else getattr(event, "type", None)
+    if etype in ("checkout.session.completed", "checkout.session.async_payment_succeeded"):
         try:
-            await _credit_transaction_if_paid(evt.session_id, http_request)
+            obj = event["data"]["object"]
+            session_id = obj.get("id") if hasattr(obj, "get") else getattr(obj, "id", None)
+            if session_id:
+                await _credit_transaction_if_paid(session_id, http_request)
         except Exception as e:
             logging.warning(f"Webhook credit failed: {e}")
+    elif etype == "checkout.session.expired":
+        try:
+            obj = event["data"]["object"]
+            session_id = obj.get("id") if hasattr(obj, "get") else getattr(obj, "id", None)
+            if session_id:
+                await db.payment_transactions.update_one(
+                    {"session_id": session_id},
+                    {
+                        "$set": {
+                            "status": "expired",
+                            "payment_status": "unpaid",
+                            "updated_at": datetime.now(timezone.utc),
+                        }
+                    },
+                )
+        except Exception:
+            pass
     return {"received": True}
 
 
