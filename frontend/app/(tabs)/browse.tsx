@@ -25,6 +25,8 @@ import { FiltersSheet, BrowseFilters, DEFAULT_FILTERS, countActive } from "../..
 import { JobsMap } from "../../src/JobsMap";
 import { JobListSkeleton } from "../../src/Skeletons";
 import { EmptyState } from "../../src/EmptyState";
+import { UpsellBanner } from "../../src/UpsellBanner";
+import { useAuth } from "../../src/auth";
 
 const FILTERS_STORAGE_KEY = "qg_browse_filters_v1";
 const VIEW_STORAGE_KEY = "qg_browse_view_v1";
@@ -40,6 +42,7 @@ const RADIUS_OPTIONS = [
 
 export default function Browse() {
   const router = useRouter();
+  const { user } = useAuth();
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -285,6 +288,9 @@ export default function Browse() {
               </ScrollView>
               {locStatus ? <Text style={styles.locStatus}>{locStatus}</Text> : null}
             </View>
+
+            {/* Eye-catching upsell — Pro Worker + Background Check */}
+            <UpsellBanner isPro={user?.is_pro} hasBackgroundCheck={user?.has_background_check} />
 
             <View style={styles.resultsHead}>
               <Text style={styles.resultsTitle}>

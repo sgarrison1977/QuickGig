@@ -1,7 +1,6 @@
 import { Tabs } from "expo-router";
-import { View, StyleSheet, Platform } from "react-native";
 import { useSafeAreaInsets } from "react-native-safe-area-context";
-import { Search, Plus, MessageCircle, User } from "lucide-react-native";
+import { Search, Briefcase, MessageCircle, User } from "lucide-react-native";
 import { colors } from "../../src/theme";
 
 export default function TabsLayout() {
@@ -37,10 +36,8 @@ export default function TabsLayout() {
         name="post"
         options={{
           title: "Post",
-          tabBarIcon: ({ focused }) => (
-            <View style={[styles.postBtn, focused && styles.postBtnActive]}>
-              <Plus size={22} color="#fff" strokeWidth={3} />
-            </View>
+          tabBarIcon: ({ color }) => (
+            <Briefcase size={22} color={color} strokeWidth={2.4} />
           ),
         }}
       />
@@ -61,24 +58,3 @@ export default function TabsLayout() {
     </Tabs>
   );
 }
-
-const styles = StyleSheet.create({
-  postBtn: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
-    ...Platform.select({
-      ios: {
-        shadowColor: colors.primary,
-        shadowOffset: { width: 0, height: 4 },
-        shadowOpacity: 0.4,
-        shadowRadius: 10,
-      },
-      android: { elevation: 5 },
-    }),
-  },
-  postBtnActive: { backgroundColor: colors.primaryDark },
-});
