@@ -113,3 +113,12 @@ credentials.json
 !.env.example
 backend/.env
 frontend/.env
+-e 
+# Environment and credential files
+.env
+.env.*
+*.env
+credentials.json
+*.pem
+*.key
+.credentials
