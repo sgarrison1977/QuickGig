@@ -9,32 +9,19 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "primaryColor": "#FF6B6B",
-    "description": "QuickGig is a neighborhood marketplace for posting and accepting small local jobs — lawn care, cleaning, handyman, errands, moving help, and more. Workers and posters chat, agree on a price, and meet in person to get the work done.",
-    "githubUrl": "https://github.com/quickgig/quickgig",
-    "privacy": "public",
-    "assetBundlePatterns": ["**/*"],
+    "description": "QuickGig is a neighborhood marketplace for posting and accepting small local jobs — lawn care, cleaning, handyman, errands, moving help, and more.",
     "ios": {
       "supportsTablet": true,
-      "bundleIdentifier": "com.quickgig.app",
-      "buildNumber": "1",
-      "config": {
-        "usesNonExemptEncryption": false
-      },
       "infoPlist": {
         "NSLocationWhenInUseUsageDescription": "Find gigs near you and show distance.",
         "NSLocationAlwaysAndWhenInUseUsageDescription": "Find gigs near you and show distance.",
         "NSPhotoLibraryUsageDescription": "Attach photos to job posts.",
         "NSPhotoLibraryAddUsageDescription": "Save job photos to your library.",
         "NSCameraUsageDescription": "Take photos for job posts and ID checks.",
-        "NSMicrophoneUsageDescription": "Record short audio in chat (optional).",
-        "NSContactsUsageDescription": "Invite friends to QuickGig (optional).",
-        "ITSAppUsesNonExemptEncryption": false,
-        "LSApplicationQueriesSchemes": ["mailto", "tel", "sms", "https"]
+        "ITSAppUsesNonExemptEncryption": false
       }
     },
     "android": {
-      "package": "com.quickgig.app",
-      "versionCode": 1,
       "adaptiveIcon": {
         "foregroundImage": "./assets/images/adaptive-icon.png",
         "backgroundColor": "#FDFBF7"
@@ -48,10 +35,6 @@
         "CAMERA",
         "POST_NOTIFICATIONS",
         "VIBRATE"
-      ],
-      "blockedPermissions": [
-        "ACCESS_BACKGROUND_LOCATION",
-        "RECORD_AUDIO"
       ]
     },
     "web": {
@@ -90,20 +73,6 @@
           "color": "#FF6B6B",
           "defaultChannel": "default"
         }
-      ],
-      [
-        "expo-build-properties",
-        {
-          "android": {
-            "compileSdkVersion": 35,
-            "targetSdkVersion": 35,
-            "minSdkVersion": 24,
-            "buildToolsVersion": "35.0.0"
-          },
-          "ios": {
-            "deploymentTarget": "15.1"
-          }
-        }
       ]
     ],
     "experiments": {
@@ -111,11 +80,7 @@
     },
     "extra": {
       "supportEmail": "support@quickgig.app",
-      "website": "https://quickgig.app",
-      "eas": {
-        "projectId": "REPLACE_WITH_EAS_PROJECT_ID_FROM_eas_init"
-      }
-    },
-    "owner": "REPLACE_WITH_YOUR_EXPO_USERNAME"
+      "website": "https://quickgig.app"
+    }
   }
 }
