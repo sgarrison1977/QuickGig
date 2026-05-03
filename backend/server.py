@@ -98,6 +98,7 @@ def public_user(u: dict) -> dict:
         "is_pro": is_pro_active,
         "pro_expires_at": pro_exp.isoformat() if isinstance(pro_exp, datetime) else None,
         "has_background_check": u.get("has_background_check", False),
+        "id_verification_paid": bool(u.get("id_verification_paid", False)),
         "created_at": u.get("created_at").isoformat() if u.get("created_at") else None,
     }
 
@@ -1253,6 +1254,7 @@ async def boost_post(data: BoostIn, user: dict = Depends(get_current_user)):
 STRIPE_PACKAGES = {
     "pro_monthly": {"amount": 4.99, "label": "QuickGig Pro · 30 days", "kind": "pro"},
     "background_check": {"amount": 10.00, "label": "Background Check Badge", "kind": "bg"},
+    "id_verification": {"amount": 10.00, "label": "ID Verification (Stripe Identity)", "kind": "id_paid"},
     "boost_24h": {"amount": 2.00, "label": "Boost · 24 hrs", "kind": "boost", "hours": 24},
     "boost_48h": {"amount": 5.00, "label": "Boost · 48 hrs", "kind": "boost", "hours": 48},
 }
@@ -1272,7 +1274,9 @@ def _stripe_client(http_request: Request):
 
 
 class CheckoutIn(BaseModel):
-    package_id: Literal["pro_monthly", "background_check", "boost_24h", "boost_48h"]
+    package_id: Literal[
+        "pro_monthly", "background_check", "id_verification", "boost_24h", "boost_48h"
+    ]
     origin_url: str
     job_id: Optional[str] = None  # required when package is a boost
 
@@ -1425,6 +1429,12 @@ async def _credit_transaction_if_paid(session_id: str, http_request: Request) ->
             await db.users.update_one(
                 {"id": user_id}, {"$set": {"has_background_check": True}}
             )
+        elif kind == "id_paid" and user_id:
+            # Grant the user a one-time entitlement to start a Stripe Identity session.
+            # Cleared after successful verification (see /verify/id/status).
+            await db.users.update_one(
+                {"id": user_id}, {"$set": {"id_verification_paid": True}}
+            )
         elif kind == "boost":
             job_id = meta.get("job_id")
             hours = int(meta.get("hours") or 24)
@@ -1495,6 +1505,14 @@ async def _revoke_transaction(txn: Dict[str, Any]) -> None:
     elif kind == "bg" and user_id:
         await db.users.update_one(
             {"id": user_id}, {"$set": {"has_background_check": False}}
+        )
+    elif kind == "id_paid" and user_id:
+        # Revoke the prepaid ID-verification entitlement on refund.
+        # Note: if the user already completed verification (is_verified=True),
+        # we leave the badge intact — but we still clear the prepaid flag so
+        # they can't start another session for free.
+        await db.users.update_one(
+            {"id": user_id}, {"$set": {"id_verification_paid": False}}
         )
     elif kind == "boost":
         job_id = meta.get("job_id")
@@ -1627,9 +1645,16 @@ async def start_id_verification(
     user: dict = Depends(get_current_user),
 ):
     """Creates a Stripe Identity VerificationSession and returns a hosted URL.
-    Pricing: $1.50 per verification billed automatically to your Stripe account."""
+    Pricing: $1.50 per verification billed automatically to your Stripe account
+    — but the user must pay $10 via /billing/checkout (package_id=id_verification)
+    BEFORE we will start a session, so the cost is covered."""
     if user.get("is_verified"):
         return {"already_verified": True}
+    if not user.get("id_verification_paid"):
+        raise HTTPException(
+            status_code=402,
+            detail="ID verification requires a one-time $10 purchase. Please complete payment first.",
+        )
     stripe = _stripe_client(http_request)
     return_origin = (data.return_url or "").rstrip("/")
     try:
@@ -1688,7 +1713,14 @@ async def get_id_verification_status(
     if st == "verified":
         await db.users.update_one(
             {"id": user["id"]},
-            {"$set": {"is_verified": True, "id_verified_at": datetime.now(timezone.utc)}},
+            {
+                "$set": {
+                    "is_verified": True,
+                    "id_verified_at": datetime.now(timezone.utc),
+                    # Consume the prepaid entitlement now that verification succeeded
+                    "id_verification_paid": False,
+                }
+            },
         )
     return {"session_id": session_id, "status": st, "verified": st == "verified"}
 

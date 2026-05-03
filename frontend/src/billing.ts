@@ -6,6 +6,7 @@ import { api } from "./api";
 export type PackageId =
   | "pro_monthly"
   | "background_check"
+  | "id_verification"
   | "boost_24h"
   | "boost_48h";
 

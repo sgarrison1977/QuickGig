@@ -72,7 +72,7 @@ export default function Register() {
         phone.trim() || undefined,
         { accepted: true, version: EULA_VERSION }
       );
-      router.replace("/verify-id");
+      router.replace("/(tabs)/browse");
     } catch (e: any) {
       setErr(e.message || "Registration failed");
     } finally {

@@ -32,9 +32,8 @@ export default function Login() {
     setLoading(true);
     setErr(null);
     try {
-      const u = await signIn(email.trim(), password);
-      if (!u.is_verified) router.replace("/verify-id");
-      else router.replace("/(tabs)/browse");
+      await signIn(email.trim(), password);
+      router.replace("/(tabs)/browse");
     } catch (e: any) {
       setErr(e.message || "Login failed");
     } finally {

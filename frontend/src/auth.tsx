@@ -18,6 +18,7 @@ export type User = {
   is_pro?: boolean;
   pro_expires_at?: string | null;
   has_background_check?: boolean;
+  id_verification_paid?: boolean;
   created_at?: string;
 };
 

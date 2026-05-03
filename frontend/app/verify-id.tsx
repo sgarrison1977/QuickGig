@@ -13,10 +13,11 @@ import { useRouter } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import * as WebBrowser from "expo-web-browser";
 import Constants from "expo-constants";
-import { ShieldCheck, ArrowLeft, Camera, Lock, Check } from "lucide-react-native";
+import { ShieldCheck, ArrowLeft, Camera, Lock, Check, CreditCard } from "lucide-react-native";
 import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { colors } from "../src/theme";
+import { startCheckout } from "../src/billing";
 
 function getReturnOrigin(): string {
   const fromEnv = process.env.EXPO_PUBLIC_RETURN_ORIGIN;
@@ -31,10 +32,32 @@ function getReturnOrigin(): string {
 export default function VerifyId() {
   const router = useRouter();
   const { user, refresh } = useAuth();
-  const [loading, setLoading] = useState(false);
+  const [paying, setPaying] = useState(false);
+  const [verifying, setVerifying] = useState(false);
+
+  const isPaid = !!user?.id_verification_paid;
+
+  const purchase = async () => {
+    setPaying(true);
+    try {
+      const status = await startCheckout("id_verification");
+      // Refresh user so id_verification_paid flips to true after webhook credits
+      await refresh().catch(() => {});
+      if (status && status.payment_status !== "paid") {
+        Alert.alert(
+          "Payment not completed",
+          "We couldn't confirm your $10 payment. If you completed it, give it a moment and refresh."
+        );
+      }
+    } catch (e: any) {
+      Alert.alert("Payment error", e?.message || "Could not start checkout");
+    } finally {
+      setPaying(false);
+    }
+  };
 
   const startVerification = async () => {
-    setLoading(true);
+    setVerifying(true);
     try {
       const origin = getReturnOrigin();
       const res = await api<{ url: string; session_id: string; already_verified?: boolean }>(
@@ -51,13 +74,11 @@ export default function VerifyId() {
         window.location.href = res.url;
         return;
       }
-      // Open Stripe Identity hosted flow in an in-app browser
       await WebBrowser.openBrowserAsync(res.url, {
         presentationStyle: WebBrowser.WebBrowserPresentationStyle.PAGE_SHEET,
         showTitle: true,
         dismissButtonStyle: "close",
       });
-      // After browser closes, poll for status
       let attempts = 0;
       const maxAttempts = 12;
       while (attempts < maxAttempts) {
@@ -82,9 +103,12 @@ export default function VerifyId() {
       );
       router.replace("/(tabs)/profile");
     } catch (e: any) {
-      Alert.alert("Error", e?.message || "Failed to start verification");
+      const msg = e?.message || "Failed to start verification";
+      // 402 from backend means they haven't paid yet — refresh to be sure
+      await refresh().catch(() => {});
+      Alert.alert("Error", msg);
     } finally {
-      setLoading(false);
+      setVerifying(false);
     }
   };
 
@@ -104,8 +128,7 @@ export default function VerifyId() {
 
         <Text style={styles.title}>Get the ID-verified badge</Text>
         <Text style={styles.subtitle}>
-          Stand out as trustworthy. Verified profiles get more job acceptances and can apply to
-          gigs that require verification.
+          Optional — but verified profiles stand out, get more job acceptances, and can apply to gigs that require ID verification.
         </Text>
 
         <View style={styles.bullets}>
@@ -121,8 +144,8 @@ export default function VerifyId() {
         </View>
 
         <View style={styles.priceCard}>
-          <Text style={styles.priceLabel}>Free</Text>
-          <Text style={styles.priceSub}>QuickGig covers the verification fee.</Text>
+          <Text style={styles.priceLabel}>$10</Text>
+          <Text style={styles.priceSub}>One-time fee · non-refundable once verification starts</Text>
         </View>
 
         {user?.is_verified ? (
@@ -130,25 +153,50 @@ export default function VerifyId() {
             <ShieldCheck size={20} color={colors.verified} strokeWidth={2.6} />
             <Text style={styles.alreadyText}>You're already verified ✓</Text>
           </View>
+        ) : isPaid ? (
+          <>
+            <View style={styles.paidBanner}>
+              <Check size={16} color="#065F46" strokeWidth={3} />
+              <Text style={styles.paidBannerText}>$10 payment received — you can verify now.</Text>
+            </View>
+            <TouchableOpacity
+              testID="start-verify"
+              style={[styles.cta, verifying && { opacity: 0.6 }]}
+              onPress={startVerification}
+              disabled={verifying}
+              activeOpacity={0.88}
+            >
+              {verifying ? (
+                <ActivityIndicator color="#fff" />
+              ) : (
+                <>
+                  <ShieldCheck size={18} color="#fff" strokeWidth={2.8} />
+                  <Text style={styles.ctaText}>Start verification</Text>
+                </>
+              )}
+            </TouchableOpacity>
+          </>
         ) : (
           <TouchableOpacity
-            testID="start-verify"
-            style={[styles.cta, loading && { opacity: 0.6 }]}
-            onPress={startVerification}
-            disabled={loading}
+            testID="purchase-verify"
+            style={[styles.cta, paying && { opacity: 0.6 }]}
+            onPress={purchase}
+            disabled={paying}
             activeOpacity={0.88}
           >
-            {loading ? (
+            {paying ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.ctaText}>Start verification</Text>
+              <>
+                <CreditCard size={18} color="#fff" strokeWidth={2.8} />
+                <Text style={styles.ctaText}>Pay $10 to get verified</Text>
+              </>
             )}
           </TouchableOpacity>
         )}
 
         <Text style={styles.footnote}>
-          By tapping Start verification, you'll be redirected to Stripe Identity, the same
-          provider used by Doordash, Lyft, and other trusted apps.
+          Payment is processed securely by Stripe. After payment, you'll be redirected to Stripe Identity (the same provider used by Doordash, Lyft, and other trusted apps) to scan your ID.
         </Text>
       </ScrollView>
     </SafeAreaView>
@@ -237,14 +285,28 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: 4,
   },
-  priceLabel: { fontSize: 24, fontWeight: "900", color: colors.text, letterSpacing: -0.5 },
+  priceLabel: { fontSize: 28, fontWeight: "900", color: colors.text, letterSpacing: -0.5 },
   priceSub: { fontSize: 12, color: colors.textSecondary, fontWeight: "600", marginTop: 2 },
+  paidBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#D1FAE5",
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 14,
+    marginTop: 4,
+  },
+  paidBannerText: { fontWeight: "800", color: "#065F46", fontSize: 13 },
   cta: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
     paddingVertical: 16,
     borderRadius: 16,
     backgroundColor: colors.primary,
-    alignItems: "center",
-    justifyContent: "center",
     marginTop: 6,
   },
   ctaText: { color: "#fff", fontWeight: "900", fontSize: 16, letterSpacing: -0.3 },

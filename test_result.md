@@ -635,10 +635,64 @@ frontend:
             no exceptions during the run. Push-notification endpoints were
             NOT re-tested (already verified previously).
 
+  - task: "Paid ID verification flow (id_verification package + 402 paywall)"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: "NA"
+          agent: "main"
+          comment: |
+            Added paid ID-verification flow:
+              • STRIPE_PACKAGES["id_verification"] = $10 (kind="id_paid") and
+                CheckoutIn Literal now includes "id_verification".
+              • Webhook/poll credit handler sets users.id_verification_paid=True
+                for kind=="id_paid"; refund handler sets it back to False.
+              • /api/verify/id/start returns 402 if the user is not already
+                is_verified and not id_verification_paid, with detail
+                "ID verification requires a one-time $10 purchase. Please
+                complete payment first.".
+              • /api/auth/me (and public_user) now exposes
+                id_verification_paid: bool.
+              • After successful verification, id_verification_paid is flipped
+                back to False (entitlement is consumed).
+        - working: true
+          agent: "testing"
+          comment: |
+            VERIFIED — 8/8 PASS against local backend (http://localhost:8001/api).
+            Harness: /app/backend_test_id_verify.py. Used fresh real-looking
+            user olivia.bennett.<rand>@example.com.
+              ✅ a. POST /auth/register (eula_accepted=true) → 200, returns
+                    {token, user}.
+              ✅ b. GET /auth/me with that token → 200; response includes
+                    id_verification_paid=false and is_verified=false.
+              ✅ c. POST /verify/id/start {"return_url":"https://example.com"}
+                    → HTTP 402 with detail exactly
+                    "ID verification requires a one-time $10 purchase.
+                     Please complete payment first."
+              ✅ d. POST /billing/checkout
+                    {"package_id":"id_verification","origin_url":"https://example.com"}
+                    → 200 with {url, session_id}; url is a real
+                    https://checkout.stripe.com/g/pay/cs_live_... and
+                    session_id is cs_live_... (live Stripe keys configured).
+                    Not actually paid.
+              ✅ e1. POST /billing/checkout background_check → 200 (regression
+                    unbroken, url + session_id returned).
+              ✅ e2. POST /auth/login admin@quickgig.app / admin123 → 200
+                    with role="admin".
+              ✅ e3. GET /api/jobs?category=all&status=open&sort=best → 200
+                    (3 jobs returned).
+              ✅ f.  POST /billing/checkout id_verification with empty
+                    origin_url → 400 {"detail":"origin_url required"}.
+            No 5xx, no exceptions in backend logs. Regression is clean.
+
 metadata:
   created_by: "main_agent"
-  version: "1.4"
-  test_sequence: 4
+  version: "1.5"
+  test_sequence: 5
   run_ui: false
 
 test_plan:
