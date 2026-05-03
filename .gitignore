@@ -106,3 +106,10 @@ credentials.json
 *.pem
 *.key
 .credentials
+
+# Env / secrets — NEVER commit
+.env
+.env.*
+!.env.example
+backend/.env
+frontend/.env
