@@ -789,10 +789,73 @@ frontend:
 
             No 5xx, no exceptions in backend.err.log during the run.
 
+  - task: "Worker re-accept blocked after withdraw + Admin list/delete jobs"
+    implemented: true
+    working: true
+    file: "/app/backend/server.py"
+    stuck_count: 0
+    priority: "high"
+    needs_retesting: false
+    status_history:
+        - working: true
+          agent: "testing"
+          comment: |
+            VERIFIED — 51/51 PASS (harness:
+            /app/backend_test_admin_jobs_withdraw.py vs live backend
+            https://task-connect-81.preview.emergentagent.com/api).
+            Three real-looking users registered fresh
+            (olivia.bennett.<rand>@example.com poster,
+            marcus.reeves.<rand>@example.com worker W,
+            liam.foster.<rand>@example.com worker W2).
+
+            POST /api/jobs/{id}/accept — re-accept blocked after withdraw:
+              ✅ [d] W accepts open job → 200, status=accepted, worker_id=W
+              ✅ [e] W /withdraw → 200; status=open, worker_id=null,
+                 abandonments contains W
+              ✅ [f] W tries /accept again → HTTP 400, detail EXACTLY:
+                 "You already withdrew from this job and can't accept it again."
+              ✅ [g] W2 (different worker, never withdrew) /accept → 200
+                 (re-accept block does NOT affect other users)
+              ✅ [h] W2 /withdraw → 200; abandonments now contains BOTH W and W2
+              ✅ [i] W2 re-accept → 400 with the same exact detail string
+
+            GET /api/admin/jobs:
+              ✅ [j] admin GET → 200, returns list, includes our job_id
+              ✅ [k] admin GET ?status=open → 200, includes our job, all
+                 returned jobs have status=open
+              ✅ [k2] admin GET with ?status=accepted / completed / cancelled
+                 / all → all return 200
+              ✅ [l] non-admin (userP) GET → 403 "Admin access required"
+
+            DELETE /api/admin/jobs/{id} (cascade delete):
+              ✅ [p] non-admin DELETE → 403 (tested BEFORE deletion so job
+                 still exists; confirms admin gate, not 404)
+              ✅ [m] admin DELETE existing job → 200, body =
+                 {"deleted": true, "job_id": "<jobId>", "messages_deleted": 2}
+                 (messages_deleted is an int)
+              ✅ [n] GET /api/jobs/{id} after delete → 404
+              ✅ [o] admin DELETE same id again → 404
+              ✅ Cascade verified end-to-end: created a 2nd job, W2 accepted
+                 (auto-creates conversation), poster sent 3 messages, admin
+                 DELETE → 200; subsequent GET /conversations/{id}/messages
+                 → 404 (conversation + messages cleaned up)
+
+            Regression:
+              ✅ admin@quickgig.app/admin123 login still works (200, role=admin)
+              ✅ GET /api/jobs?category=all&status=open&sort=best → 200,
+                 returns list (basic listing endpoint untouched)
+              ✅ POST /api/jobs (create) untouched, returns abandonments=[]
+                 on new job
+              ✅ POST /api/conversations/{id}/messages and GET /conversations
+                 still work for accepted jobs
+
+            No 5xx, no exceptions in backend.err.log during the run. Both new
+            behaviors are working end-to-end on the backend.
+
 metadata:
   created_by: "main_agent"
-  version: "1.7"
-  test_sequence: 7
+  version: "1.8"
+  test_sequence: 8
   run_ui: false
 
 test_plan:

@@ -24,12 +24,14 @@ import {
   LogOut,
   ShieldCheck,
   Eye,
+  Trash2,
+  MapPin,
 } from "lucide-react-native";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, brutal } from "../../src/theme";
 
-type Tab = "stats" | "users" | "chats" | "settings";
+type Tab = "stats" | "users" | "chats" | "jobs" | "settings";
 
 export default function AdminDashboard() {
   const router = useRouter();
@@ -38,19 +40,22 @@ export default function AdminDashboard() {
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
   const [convos, setConvos] = useState<any[]>([]);
+  const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, u, c] = await Promise.all([
+      const [s, u, c, j] = await Promise.all([
         api("/admin/stats"),
         api("/admin/users"),
         api("/admin/conversations"),
+        api("/admin/jobs"),
       ]);
       setStats(s);
       setUsers(u);
       setConvos(c);
+      setJobs(j as any[]);
     } catch (e: any) {
       Alert.alert("Error", e.message);
     } finally {
@@ -80,6 +85,29 @@ export default function AdminDashboard() {
     }
   };
 
+  const deleteJob = (j: any) => {
+    Alert.alert(
+      "Delete this job?",
+      `"${j.title}" will be permanently removed along with its chat history. This can't be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await api(`/admin/jobs/${j.id}`, { method: "DELETE" });
+              load();
+            } catch (e: any) {
+              Alert.alert("Error", e.message);
+            }
+          },
+        },
+      ]
+    );
+  };
+
+
   return (
     <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
       <View style={styles.header}>
@@ -103,7 +131,7 @@ export default function AdminDashboard() {
       </View>
 
       <View style={styles.tabs}>
-        {(["stats", "users", "chats", "settings"] as Tab[]).map((t) => (
+        {(["stats", "users", "jobs", "chats", "settings"] as Tab[]).map((t) => (
           <TouchableOpacity
             key={t}
             testID={`admin-tab-${t}`}
@@ -185,6 +213,68 @@ export default function AdminDashboard() {
                     </View>
                   </TouchableOpacity>
                 ))
+              )}
+            </View>
+          ) : null}
+          {tab === "jobs" ? (
+            <View style={{ gap: 10 }}>
+              {jobs.length === 0 ? (
+                <Text style={{ color: colors.textSecondary, padding: 20, textAlign: "center" }}>No jobs.</Text>
+              ) : (
+                jobs.map((j: any) => {
+                  const statusColor =
+                    j.status === "open" ? colors.primary :
+                    j.status === "accepted" ? "#0EA5E9" :
+                    j.status === "completed" ? "#10B981" :
+                    j.status === "cancelled" ? "#991B1B" : colors.textSecondary;
+                  return (
+                    <View key={j.id} style={brutal.card}>
+                      <View style={styles.userRow}>
+                        <View style={[styles.avatar, { backgroundColor: statusColor }]}>
+                          <Briefcase size={20} color="#fff" strokeWidth={2.6} />
+                        </View>
+                        <View style={{ flex: 1 }}>
+                          <Text style={styles.userName} numberOfLines={1}>{j.title || "Untitled"}</Text>
+                          <Text style={styles.userMeta} numberOfLines={1}>
+                            {j.poster?.name || "Unknown"} · ${j.total_pay ?? j.hourly_rate ?? 0}{j.pay_type === "hourly" ? "/hr" : ""}
+                          </Text>
+                          <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4, flexWrap: "wrap" }}>
+                            <View style={{ backgroundColor: statusColor, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 6 }}>
+                              <Text style={{ color: "#fff", fontWeight: "800", fontSize: 10, letterSpacing: 0.5 }}>{(j.status || "").toUpperCase()}</Text>
+                            </View>
+                            {j.address ? (
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 3 }}>
+                                <MapPin size={11} color={colors.textSecondary} strokeWidth={2.4} />
+                                <Text style={{ fontSize: 11, color: colors.textSecondary, fontWeight: "600" }} numberOfLines={1}>
+                                  {j.address.slice(0, 32)}
+                                </Text>
+                              </View>
+                            ) : null}
+                          </View>
+                        </View>
+                      </View>
+                      <View style={{ flexDirection: "row", gap: 8, marginTop: 10 }}>
+                        <TouchableOpacity
+                          style={[brutal.buttonOutline, { flex: 1 }]}
+                          onPress={() => router.push(`/job/${j.id}`)}
+                          activeOpacity={0.85}
+                        >
+                          <Eye size={16} color={colors.text} strokeWidth={2.4} />
+                          <Text style={brutal.buttonTextDark}>View</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          testID={`delete-job-${j.id}`}
+                          style={[brutal.buttonOutline, { flex: 1, borderColor: "#991B1B", backgroundColor: "#FEF2F2" }]}
+                          onPress={() => deleteJob(j)}
+                          activeOpacity={0.85}
+                        >
+                          <Trash2 size={16} color="#991B1B" strokeWidth={2.6} />
+                          <Text style={[brutal.buttonTextDark, { color: "#991B1B" }]}>Delete</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })
               )}
             </View>
           ) : null}

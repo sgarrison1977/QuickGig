@@ -651,6 +651,15 @@ async def accept_job(job_id: str, user: dict = Depends(get_current_user)):
     if j["poster_id"] == user["id"]:
         raise HTTPException(status_code=400, detail="You cannot accept your own job")
 
+    # If this worker previously withdrew from this same job, block re-accept.
+    # This prevents back-and-forth flakiness on a single job.
+    abandoners = [a.get("worker_id") for a in (j.get("abandonments") or []) if a.get("worker_id")]
+    if user["id"] in abandoners:
+        raise HTTPException(
+            status_code=400,
+            detail="You already withdrew from this job and can't accept it again.",
+        )
+
     await db.jobs.update_one(
         {"id": job_id},
         {"$set": {"status": "accepted", "worker_id": user["id"], "accepted_at": datetime.now(timezone.utc)}},
@@ -1101,6 +1110,63 @@ async def admin_stats(admin: dict = Depends(get_admin_user)):
         "jobs_completed": await db.jobs.count_documents({"status": "completed"}),
         "messages": await db.messages.count_documents({}),
     }
+
+
+@api_router.get("/admin/jobs")
+async def admin_list_jobs(
+    admin: dict = Depends(get_admin_user),
+    status: Optional[str] = None,
+    limit: int = 200,
+):
+    """List jobs for the admin panel. Optional status filter (open/accepted/completed/cancelled)."""
+    q: dict = {}
+    if status and status != "all":
+        q["status"] = status
+    rows = await db.jobs.find(q, {"_id": 0}).sort("created_at", -1).to_list(min(max(limit, 1), 500))
+    poster_ids = list({r.get("poster_id") for r in rows if r.get("poster_id")})
+    worker_ids = list({r.get("worker_id") for r in rows if r.get("worker_id")})
+    user_map: Dict[str, dict] = {}
+    if poster_ids or worker_ids:
+        async for u in db.users.find({"id": {"$in": list(set(poster_ids + worker_ids))}}, USER_PROJECTION):
+            user_map[u["id"]] = u
+    return [
+        public_job(r, poster=user_map.get(r.get("poster_id")), worker=user_map.get(r.get("worker_id")))
+        for r in rows
+    ]
+
+
+@api_router.delete("/admin/jobs/{job_id}")
+async def admin_delete_job(job_id: str, admin: dict = Depends(get_admin_user)):
+    """Hard-delete a job. Used to clean up jobs that have been abandoned by a
+    poster who is no longer using the app. Cascades to associated conversations
+    and messages so the job doesn't keep sitting in inboxes."""
+    j = await db.jobs.find_one({"id": job_id}, {"_id": 0, "poster_id": 1, "worker_id": 1, "title": 1})
+    if not j:
+        raise HTTPException(status_code=404, detail="Job not found")
+    convo_ids = []
+    async for c in db.conversations.find({"job_id": job_id}, {"_id": 0, "id": 1}):
+        convo_ids.append(c["id"])
+    if convo_ids:
+        await db.messages.delete_many({"conversation_id": {"$in": convo_ids}})
+    await db.conversations.delete_many({"job_id": job_id})
+    await db.jobs.delete_one({"id": job_id})
+    # Notify both parties (best-effort)
+    title = j.get("title") or "your job"
+    if j.get("poster_id"):
+        await notify_user(
+            j["poster_id"],
+            "🗑️ Your job was removed",
+            f"\"{title}\" was removed by an admin.",
+            {"type": "job_deleted", "job_id": job_id},
+        )
+    if j.get("worker_id"):
+        await notify_user(
+            j["worker_id"],
+            "🗑️ A job you accepted was removed",
+            f"\"{title}\" was removed by an admin.",
+            {"type": "job_deleted", "job_id": job_id},
+        )
+    return {"deleted": True, "job_id": job_id, "messages_deleted": len(convo_ids)}
 
 
 @api_router.get("/admin/revenue")
