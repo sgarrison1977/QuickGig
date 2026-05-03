@@ -153,6 +153,15 @@ export default function Register() {
               <Text style={styles.eulaMeta}>
                 Version {EULA_VERSION} · Effective {EULA_EFFECTIVE_DATE}
               </Text>
+              <TouchableOpacity
+                onPress={() => router.push("/privacy")}
+                testID="privacy-link"
+                hitSlop={{ top: 6, bottom: 6, left: 6, right: 6 }}
+              >
+                <Text style={styles.privacyLink}>
+                  Read our Privacy Policy ↗
+                </Text>
+              </TouchableOpacity>
 
               <View style={styles.warnCallout}>
                 <ShieldAlert size={16} color="#92400E" strokeWidth={2.6} />
@@ -285,6 +294,13 @@ const styles = StyleSheet.create({
   eulaHeader: { flexDirection: "row", alignItems: "center", gap: 8 },
   eulaTitle: { fontSize: 16, fontWeight: "800", color: colors.text, letterSpacing: -0.3 },
   eulaMeta: { fontSize: 11, fontWeight: "700", color: colors.textSecondary, letterSpacing: 0.4 },
+  privacyLink: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.primary,
+    letterSpacing: -0.1,
+    textDecorationLine: "underline",
+  },
   warnCallout: {
     flexDirection: "row",
     alignItems: "flex-start",

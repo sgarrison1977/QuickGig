@@ -369,6 +369,16 @@ export default function Profile() {
           <LogOut size={18} color={colors.text} strokeWidth={2.4} />
           <Text style={brutal.buttonTextDark}>Sign Out</Text>
         </TouchableOpacity>
+
+        <View style={styles.legalRow}>
+          <TouchableOpacity onPress={() => router.push("/eula")} testID="legal-eula">
+            <Text style={styles.legalLink}>EULA</Text>
+          </TouchableOpacity>
+          <Text style={styles.legalDot}>·</Text>
+          <TouchableOpacity onPress={() => router.push("/privacy")} testID="legal-privacy">
+            <Text style={styles.legalLink}>Privacy Policy</Text>
+          </TouchableOpacity>
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -532,4 +542,21 @@ const styles = StyleSheet.create({
     borderRadius: 12,
   },
   reviewCtaText: { color: "#fff", fontWeight: "800", fontSize: 13.5, letterSpacing: -0.2 },
+  legalRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    marginTop: 8,
+  },
+  legalLink: {
+    fontSize: 12,
+    fontWeight: "700",
+    color: colors.textSecondary,
+    textDecorationLine: "underline",
+  },
+  legalDot: {
+    fontSize: 12,
+    color: colors.textSecondary,
+  },
 });
