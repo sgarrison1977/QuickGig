@@ -497,4 +497,33 @@ const styles = StyleSheet.create({
   boostOptPrice: { fontWeight: "800", fontSize: 15, color: colors.text, marginTop: 2, letterSpacing: -0.3 },
   boostOptPriceActive: { color: colors.primary },
   boostNote: { fontSize: 12, color: colors.textSecondary, fontWeight: "500", lineHeight: 18 },
+
+  coordsHint: {
+    fontSize: 12,
+    color: colors.textSecondary,
+    fontWeight: "500",
+    lineHeight: 17,
+    marginTop: -4,
+  },
+  gpsBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 10,
+    backgroundColor: colors.primary,
+    paddingVertical: 16,
+    paddingHorizontal: 20,
+    borderRadius: 14,
+    marginTop: 4,
+    minHeight: 56,
+  },
+  gpsBtnSet: {
+    backgroundColor: "#10B981",
+  },
+  gpsBtnText: {
+    color: "#fff",
+    fontWeight: "900",
+    fontSize: 16,
+    letterSpacing: -0.3,
+  },
 });

@@ -2,9 +2,27 @@ import React, { useMemo, useRef, useState } from "react";
 import { View, Text, StyleSheet, TouchableOpacity } from "react-native";
 import { useRouter } from "expo-router";
 import { MapPin, Star, ShieldCheck, ChevronRight, Crosshair } from "lucide-react-native";
-import MapView, { Marker, Callout } from "react-native-maps";
 import { colors, shadows } from "./theme";
 import { categoryMeta } from "./api";
+
+// Dynamic require so a missing/misconfigured native module on Android (e.g.
+// production build without a Google Maps API key) cannot crash the JS bundle
+// at import time. If the module fails to load we render the fallback below.
+let MapView: any = null;
+let Marker: any = null;
+let Callout: any = null;
+let mapsLoadError: Error | null = null;
+try {
+  // eslint-disable-next-line @typescript-eslint/no-var-requires
+  const maps = require("react-native-maps");
+  MapView = maps.default || maps.MapView;
+  Marker = maps.Marker;
+  Callout = maps.Callout;
+} catch (e: any) {
+  mapsLoadError = e;
+  // eslint-disable-next-line no-console
+  console.warn("[JobsMap] react-native-maps unavailable:", e?.message);
+}
 
 type Job = {
   id: string;
@@ -37,6 +55,23 @@ export function JobsMap({ jobs, coords }: Props) {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [tracking, setTracking] = useState<boolean>(true);
   const mapRef = useRef<any>(null);
+
+  // If the native maps module didn't load (e.g. APK built without a valid
+  // Google Maps API key, or Expo Go on a platform that can't resolve it),
+  // render a graceful fallback instead of crashing the whole tab.
+  if (!MapView || !Marker || mapsLoadError) {
+    return (
+      <View style={fallbackStyles.wrap} testID="map-unavailable">
+        <View style={fallbackStyles.iconCircle}>
+          <MapPin size={42} color={colors.primary} strokeWidth={2.2} />
+        </View>
+        <Text style={fallbackStyles.title}>Map view unavailable</Text>
+        <Text style={fallbackStyles.sub}>
+          Switch back to List view to browse all gigs near you. The map will return in a future update.
+        </Text>
+      </View>
+    );
+  }
 
   // Disable tracksViewChanges shortly after first render so markers stay sharp
   // but render correctly (Android bug: false-from-start = blank/tiny marker).
@@ -204,6 +239,42 @@ export function JobsMap({ jobs, coords }: Props) {
     </View>
   );
 }
+
+// Fallback UI styles when react-native-maps native module is unavailable
+const fallbackStyles = StyleSheet.create({
+  wrap: {
+    flex: 1,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 14,
+    padding: 32,
+    minHeight: 360,
+    backgroundColor: colors.bg,
+  },
+  iconCircle: {
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: colors.primarySoft || "#FFE5E5",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  title: {
+    fontSize: 18,
+    fontWeight: "800",
+    color: colors.text,
+    letterSpacing: -0.3,
+    marginTop: 4,
+  },
+  sub: {
+    fontSize: 13.5,
+    color: colors.textSecondary,
+    fontWeight: "500",
+    textAlign: "center",
+    lineHeight: 19,
+    maxWidth: 300,
+  },
+});
 
 const styles = StyleSheet.create({
   wrap: { flex: 1, backgroundColor: colors.surfaceAlt },
