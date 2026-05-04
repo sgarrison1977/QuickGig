@@ -5,8 +5,17 @@ import { StatusBar } from "expo-status-bar";
 import { SafeAreaProvider } from "react-native-safe-area-context";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import * as Notifications from "expo-notifications";
+import * as SplashScreen from "expo-splash-screen";
 import { AuthProvider } from "../src/auth";
 import { routeForNotification } from "../src/notifications";
+
+// Keep the QuickGig splash visible for an extra moment so the brand registers
+// instead of flashing past. We hide it ~1.5s after the JS bundle is ready.
+SplashScreen.preventAutoHideAsync().catch(() => {});
+// Optional: set a fade-out animation when we finally hide the splash
+try {
+  SplashScreen.setOptions({ duration: 600, fade: true });
+} catch {}
 
 function NotificationRouter() {
   const handledIds = useRef<Set<string>>(new Set());
@@ -51,6 +60,16 @@ function NotificationRouter() {
 }
 
 export default function RootLayout() {
+  // Hold the QuickGig splash a bit longer (~1.5s) so the brand actually
+  // registers — Expo would otherwise hide it the instant the JS bundle
+  // is ready, often well under 100ms on warm starts.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      SplashScreen.hideAsync().catch(() => {});
+    }, 1500);
+    return () => clearTimeout(t);
+  }, []);
+
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
