@@ -38,7 +38,7 @@
       },
       "channel": "production",
       "env": {
-        "EXPO_PUBLIC_BACKEND_URL": "https://api.quickgig.app"
+        "EXPO_PUBLIC_BACKEND_URL": "https://task-connect-81.emergent.host"
       }
     }
   },
