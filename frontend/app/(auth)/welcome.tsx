@@ -90,6 +90,15 @@ export default function Welcome() {
           </TouchableOpacity>
         </View>
 
+        <TouchableOpacity
+          testID="admin-link"
+          onPress={() => router.push("/admin")}
+          activeOpacity={0.6}
+          hitSlop={{ top: 12, bottom: 12, left: 24, right: 24 }}
+        >
+          <Text style={styles.adminLink}>Admin sign-in →</Text>
+        </TouchableOpacity>
+
       </ScrollView>
     </SafeAreaView>
   );
