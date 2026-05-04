@@ -198,34 +198,24 @@ export default function Browse() {
                 ) : null}
               </View>
               <TouchableOpacity
-                testID="view-toggle"
-                style={[styles.viewToggleBtn, viewMode === "map" && styles.viewToggleBtnActive]}
-                onPress={() => setViewMode(viewMode === "list" ? "map" : "list")}
-                activeOpacity={0.85}
-              >
-                {viewMode === "list" ? (
-                  <>
-                    <MapIcon size={18} color={colors.primary} strokeWidth={2.6} />
-                    <Text style={styles.viewToggleText}>Map</Text>
-                  </>
-                ) : (
-                  <>
-                    <List size={18} color="#fff" strokeWidth={2.8} />
-                    <Text style={[styles.viewToggleText, { color: "#fff" }]}>List</Text>
-                  </>
-                )}
-              </TouchableOpacity>
-              <TouchableOpacity
                 testID="filters-open"
                 style={[styles.filterBtn, activeCount > 0 && styles.filterBtnActive]}
                 onPress={() => setShowSheet(true)}
                 activeOpacity={0.85}
               >
                 <SlidersHorizontal
-                  size={18}
+                  size={20}
                   color={activeCount > 0 ? "#fff" : colors.text}
-                  strokeWidth={2.4}
+                  strokeWidth={2.6}
                 />
+                <Text
+                  style={[
+                    styles.filterBtnLabel,
+                    activeCount > 0 && { color: "#fff" },
+                  ]}
+                >
+                  Filter
+                </Text>
                 {activeCount > 0 ? (
                   <View style={styles.filterBadge}>
                     <Text style={styles.filterBadgeText}>{activeCount}</Text>
@@ -589,15 +579,24 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, paddingVertical: 14, fontSize: 15, fontWeight: "500", color: colors.text },
   filterBtn: {
-    width: 52,
-    height: 52,
-    borderRadius: 16,
-    backgroundColor: colors.surface,
+    flexDirection: "row",
     alignItems: "center",
     justifyContent: "center",
+    gap: 8,
+    minWidth: 110,
+    height: 52,
+    paddingHorizontal: 18,
+    borderRadius: 16,
+    backgroundColor: colors.surface,
     ...(shadows.soft as object),
   },
   filterBtnActive: { backgroundColor: colors.primary },
+  filterBtnLabel: {
+    color: colors.text,
+    fontWeight: "800",
+    fontSize: 15,
+    letterSpacing: -0.2,
+  },
   viewToggleBtn: {
     flexDirection: "row",
     alignItems: "center",
