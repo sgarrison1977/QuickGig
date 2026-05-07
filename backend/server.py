@@ -100,6 +100,14 @@ def public_user(u: dict) -> dict:
         "has_background_check": u.get("has_background_check", False),
         "id_verification_paid": bool(u.get("id_verification_paid", False)),
         "created_at": u.get("created_at").isoformat() if u.get("created_at") else None,
+        "deletion_requested": bool(u.get("deletion_requested", False)),
+        "deletion_requested_at": (
+            u["deletion_requested_at"].isoformat()
+            if isinstance(u.get("deletion_requested_at"), datetime)
+            else None
+        ),
+        "deletion_reason": u.get("deletion_reason") or None,
+        "deleted": bool(u.get("deleted", False)),
     }
 
 
@@ -201,6 +209,10 @@ class PushTokenIn(BaseModel):
 
 class NotifSettingsIn(BaseModel):
     enabled: bool
+
+
+class DeletionRequestIn(BaseModel):
+    reason: Optional[str] = ""
 
 
 # ============ PUSH NOTIFICATIONS (Expo free service) ============
@@ -380,6 +392,123 @@ async def update_profile(data: ProfileUpdateIn, user: dict = Depends(get_current
         await db.users.update_one({"id": user["id"]}, {"$set": update})
     fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
     return public_user(fresh)
+
+
+# ============ ACCOUNT DELETION (user-initiated, admin-fulfilled) ============
+
+@api_router.post("/users/me/request-deletion")
+async def request_account_deletion(
+    data: DeletionRequestIn, user: dict = Depends(get_current_user)
+):
+    """User asks to have their account deleted.
+    The request is queued for admin review; the account is NOT deleted yet."""
+    if user.get("deleted"):
+        raise HTTPException(status_code=400, detail="Account already deleted")
+    if user.get("role") == "admin":
+        raise HTTPException(
+            status_code=400, detail="Admin accounts cannot request self-deletion"
+        )
+    reason = (data.reason or "").strip()[:1000]
+    await db.users.update_one(
+        {"id": user["id"]},
+        {
+            "$set": {
+                "deletion_requested": True,
+                "deletion_requested_at": datetime.now(timezone.utc),
+                "deletion_reason": reason,
+            }
+        },
+    )
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return public_user(fresh)
+
+
+@api_router.post("/users/me/cancel-deletion")
+async def cancel_account_deletion(user: dict = Depends(get_current_user)):
+    """User cancels a previously-submitted deletion request."""
+    await db.users.update_one(
+        {"id": user["id"]},
+        {
+            "$unset": {
+                "deletion_requested": "",
+                "deletion_requested_at": "",
+                "deletion_reason": "",
+            }
+        },
+    )
+    fresh = await db.users.find_one({"id": user["id"]}, {"_id": 0})
+    return public_user(fresh)
+
+
+@api_router.get("/admin/deletion-requests")
+async def admin_list_deletion_requests(admin: dict = Depends(get_admin_user)):
+    """Returns all users who have an open deletion request, newest first."""
+    cursor = db.users.find(
+        {"deletion_requested": True, "deleted": {"$ne": True}},
+        {"_id": 0, "password_hash": 0, "id_document": 0},
+    ).sort("deletion_requested_at", -1)
+    users = await cursor.to_list(500)
+    return [public_user(u) for u in users]
+
+
+@api_router.delete("/admin/users/{user_id}")
+async def admin_delete_user(user_id: str, admin: dict = Depends(get_admin_user)):
+    """Permanently anonymize a user.
+
+    Behaviour: the user's PII is wiped and replaced with placeholder values
+    ("Deleted User"). The user document itself remains so historical jobs,
+    chats and reviews stay readable for the OTHER party. Login is blocked
+    by clearing the password hash and marking the account as deleted/banned.
+    """
+    target = await db.users.find_one({"id": user_id}, {"_id": 0})
+    if not target:
+        raise HTTPException(status_code=404, detail="User not found")
+    if target.get("role") == "admin":
+        raise HTTPException(status_code=400, detail="Cannot delete admin account")
+    if target.get("deleted"):
+        raise HTTPException(status_code=400, detail="User already deleted")
+
+    now = datetime.now(timezone.utc)
+    anonymized_email = f"deleted+{user_id}@quickgig.app"
+    update = {
+        "$set": {
+            "name": "Deleted User",
+            "email": anonymized_email,
+            "phone": None,
+            "bio": "",
+            "avatar": None,
+            "id_document": None,
+            "password_hash": "",  # blocks any future login
+            "push_tokens": [],
+            "is_pro": False,
+            "pro_expires_at": None,
+            "stripe_customer_id": None,
+            "address": None,
+            "lat": None,
+            "lng": None,
+            "is_verified": False,
+            "has_background_check": False,
+            "id_verification_paid": False,
+            "banned": True,
+            "deleted": True,
+            "deleted_at": now,
+            "deletion_requested": False,
+        },
+        "$unset": {
+            "deletion_requested_at": "",
+            "deletion_reason": "",
+        },
+    }
+    await db.users.update_one({"id": user_id}, update)
+
+    # Cancel any of THEIR posted jobs that are still open / in-progress so no
+    # one accepts/works on a job belonging to a deleted account.
+    await db.jobs.update_many(
+        {"poster_id": user_id, "status": {"$in": ["open", "in_progress"]}},
+        {"$set": {"status": "cancelled", "cancelled_at": now, "cancelled_reason": "account_deleted"}},
+    )
+
+    return {"ok": True, "user_id": user_id, "anonymized": True}
 
 
 # ============ PUSH NOTIFICATIONS ENDPOINTS ============

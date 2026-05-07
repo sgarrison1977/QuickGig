@@ -8,6 +8,11 @@ import {
   Image,
   RefreshControl,
   Switch,
+  Modal,
+  TextInput,
+  Alert,
+  KeyboardAvoidingView,
+  Platform,
 } from "react-native";
 import { useRouter, useFocusEffect } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
@@ -26,6 +31,9 @@ import {
   XCircle,
   Pencil,
   Check,
+  Trash2,
+  AlertTriangle,
+  X,
 } from "lucide-react-native";
 import { useAuth } from "../../src/auth";
 import { api } from "../../src/api";
@@ -44,6 +52,10 @@ export default function Profile() {
   const [refreshing, setRefreshing] = useState(false);
   const [notifEnabled, setNotifEnabledState] = useState<boolean>(true);
   const [notifHasToken, setNotifHasToken] = useState<boolean>(false);
+  // Account deletion request modal
+  const [delModalOpen, setDelModalOpen] = useState(false);
+  const [delReason, setDelReason] = useState("");
+  const [delSubmitting, setDelSubmitting] = useState(false);
   // All sections start collapsed for minimal scrolling
   const [openSections, setOpenSections] = useState<Record<SectionKey, boolean>>({
     posted: false,
@@ -73,6 +85,49 @@ export default function Profile() {
     } catch {
       setNotifEnabledState(!v); // revert on failure
     }
+  };
+
+  const submitDeletionRequest = async () => {
+    setDelSubmitting(true);
+    try {
+      await api("/users/me/request-deletion", {
+        method: "POST",
+        body: { reason: delReason.trim() },
+      });
+      await refresh();
+      setDelModalOpen(false);
+      setDelReason("");
+      Alert.alert(
+        "Request received",
+        "Your account deletion request has been submitted. An admin will review it soon. You can cancel anytime before it's processed.",
+      );
+    } catch (e: any) {
+      Alert.alert("Error", e?.message || "Could not submit request");
+    } finally {
+      setDelSubmitting(false);
+    }
+  };
+
+  const cancelDeletionRequest = () => {
+    Alert.alert(
+      "Cancel deletion request?",
+      "Your account will stay active and your data will not be removed.",
+      [
+        { text: "Keep request", style: "cancel" },
+        {
+          text: "Cancel request",
+          style: "destructive",
+          onPress: async () => {
+            try {
+              await api("/users/me/cancel-deletion", { method: "POST" });
+              await refresh();
+            } catch (e: any) {
+              Alert.alert("Error", e?.message || "Could not cancel");
+            }
+          },
+        },
+      ],
+    );
   };
 
   const load = useCallback(async () => {
@@ -349,6 +404,39 @@ export default function Profile() {
           <Text style={brutal.buttonTextDark}>Sign Out</Text>
         </TouchableOpacity>
 
+        {/* Account deletion */}
+        {user.deletion_requested ? (
+          <View style={styles.deletionPending} testID="deletion-pending-banner">
+            <View style={styles.deletionPendingHeader}>
+              <AlertTriangle size={18} color="#92400E" strokeWidth={2.6} />
+              <Text style={styles.deletionPendingTitle}>Deletion request pending</Text>
+            </View>
+            <Text style={styles.deletionPendingBody}>
+              An admin will review your request soon. Your account is still active until they
+              process it. You can cancel anytime before then.
+            </Text>
+            <TouchableOpacity
+              testID="cancel-deletion-btn"
+              style={styles.deletionCancelBtn}
+              onPress={cancelDeletionRequest}
+              activeOpacity={0.85}
+            >
+              <X size={16} color="#92400E" strokeWidth={2.8} />
+              <Text style={styles.deletionCancelText}>Cancel deletion request</Text>
+            </TouchableOpacity>
+          </View>
+        ) : (
+          <TouchableOpacity
+            testID="request-deletion-btn"
+            style={styles.deletionBtn}
+            onPress={() => setDelModalOpen(true)}
+            activeOpacity={0.85}
+          >
+            <Trash2 size={16} color="#B91C1C" strokeWidth={2.6} />
+            <Text style={styles.deletionBtnText}>Request Account Deletion</Text>
+          </TouchableOpacity>
+        )}
+
         <View style={styles.legalRow}>
           <TouchableOpacity onPress={() => router.push("/eula")} testID="legal-eula">
             <Text style={styles.legalLink}>EULA</Text>
@@ -359,6 +447,84 @@ export default function Profile() {
           </TouchableOpacity>
         </View>
       </ScrollView>
+
+      {/* Deletion request modal */}
+      <Modal
+        visible={delModalOpen}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setDelModalOpen(false)}
+      >
+        <KeyboardAvoidingView
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          style={styles.modalBackdrop}
+        >
+          <View style={styles.modalCard} testID="deletion-modal">
+            <View style={styles.modalHeader}>
+              <View style={styles.modalIconWrap}>
+                <Trash2 size={22} color="#B91C1C" strokeWidth={2.6} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={styles.modalTitle}>Request Account Deletion</Text>
+                <Text style={styles.modalSub}>
+                  An admin will review and process your request.
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={() => setDelModalOpen(false)}
+                hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                testID="deletion-modal-close"
+              >
+                <X size={20} color={colors.textSecondary} strokeWidth={2.4} />
+              </TouchableOpacity>
+            </View>
+
+            <View style={styles.modalNotice}>
+              <Text style={styles.modalNoticeText}>
+                When approved, your name and email will be replaced with “Deleted User”
+                and all your personal info will be wiped. Past job and review records will
+                stay so other users keep their history. This cannot be undone.
+              </Text>
+            </View>
+
+            <Text style={styles.modalLabel}>Reason (optional)</Text>
+            <TextInput
+              testID="deletion-reason-input"
+              style={styles.modalInput}
+              placeholder="Help us improve — why are you leaving?"
+              placeholderTextColor={colors.textSecondary}
+              value={delReason}
+              onChangeText={setDelReason}
+              multiline
+              maxLength={1000}
+              textAlignVertical="top"
+            />
+
+            <View style={styles.modalActions}>
+              <TouchableOpacity
+                style={[brutal.buttonOutline, { flex: 1 }]}
+                onPress={() => setDelModalOpen(false)}
+                disabled={delSubmitting}
+                activeOpacity={0.85}
+              >
+                <Text style={brutal.buttonTextDark}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                testID="deletion-submit-btn"
+                style={[styles.modalSubmit, delSubmitting && { opacity: 0.6 }]}
+                onPress={submitDeletionRequest}
+                disabled={delSubmitting}
+                activeOpacity={0.85}
+              >
+                <Trash2 size={16} color="#fff" strokeWidth={2.8} />
+                <Text style={styles.modalSubmitText}>
+                  {delSubmitting ? "Submitting…" : "Submit request"}
+                </Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
     </SafeAreaView>
   );
 }
@@ -537,5 +703,157 @@ const styles = StyleSheet.create({
   legalDot: {
     fontSize: 12,
     color: colors.textSecondary,
+  },
+
+  // Account deletion
+  deletionBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    backgroundColor: "#FEF2F2",
+    borderWidth: 1.5,
+    borderColor: "#FCA5A5",
+    borderRadius: 14,
+    marginTop: 8,
+  },
+  deletionBtnText: {
+    color: "#B91C1C",
+    fontWeight: "800",
+    fontSize: 13.5,
+    letterSpacing: -0.1,
+  },
+  deletionPending: {
+    backgroundColor: "#FEF3C7",
+    borderRadius: 14,
+    borderWidth: 1.5,
+    borderColor: "#FCD34D",
+    padding: 14,
+    gap: 8,
+    marginTop: 8,
+  },
+  deletionPendingHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+  },
+  deletionPendingTitle: {
+    fontSize: 14,
+    fontWeight: "800",
+    color: "#92400E",
+    letterSpacing: -0.2,
+  },
+  deletionPendingBody: {
+    fontSize: 12.5,
+    color: "#78350F",
+    fontWeight: "500",
+    lineHeight: 18,
+  },
+  deletionCancelBtn: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    paddingVertical: 10,
+    backgroundColor: "rgba(255,255,255,0.7)",
+    borderRadius: 10,
+    marginTop: 4,
+  },
+  deletionCancelText: {
+    color: "#92400E",
+    fontWeight: "800",
+    fontSize: 12.5,
+  },
+
+  // Deletion modal
+  modalBackdrop: {
+    flex: 1,
+    backgroundColor: "rgba(0,0,0,0.55)",
+    justifyContent: "center",
+    paddingHorizontal: 18,
+  },
+  modalCard: {
+    backgroundColor: "#fff",
+    borderRadius: 22,
+    padding: 20,
+    gap: 12,
+  },
+  modalHeader: {
+    flexDirection: "row",
+    alignItems: "flex-start",
+    gap: 12,
+  },
+  modalIconWrap: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: "#FEE2E2",
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  modalTitle: {
+    fontSize: 17,
+    fontWeight: "800",
+    color: colors.text,
+    letterSpacing: -0.3,
+  },
+  modalSub: {
+    fontSize: 12.5,
+    color: colors.textSecondary,
+    fontWeight: "500",
+    marginTop: 2,
+  },
+  modalNotice: {
+    backgroundColor: "#FEF2F2",
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: "#FECACA",
+  },
+  modalNoticeText: {
+    fontSize: 12.5,
+    color: "#7F1D1D",
+    fontWeight: "500",
+    lineHeight: 18,
+  },
+  modalLabel: {
+    fontSize: 12,
+    fontWeight: "800",
+    color: colors.textSecondary,
+    letterSpacing: 0.6,
+    marginTop: 4,
+  },
+  modalInput: {
+    minHeight: 90,
+    backgroundColor: colors.surface,
+    borderRadius: 12,
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    padding: 12,
+    fontSize: 14,
+    color: colors.text,
+  },
+  modalActions: {
+    flexDirection: "row",
+    gap: 10,
+    marginTop: 4,
+  },
+  modalSubmit: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
+    backgroundColor: "#B91C1C",
+    paddingVertical: 14,
+    borderRadius: 12,
+  },
+  modalSubmitText: {
+    color: "#fff",
+    fontWeight: "800",
+    fontSize: 14,
+    letterSpacing: -0.1,
   },
 });

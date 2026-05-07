@@ -85,6 +85,43 @@ export default function AdminDashboard() {
     }
   };
 
+  const permanentlyDeleteUser = (u: any) => {
+    Alert.alert(
+      "Permanently delete this user?",
+      `${u.name} (${u.email}) will be anonymized to "Deleted User". Their personal info will be wiped, login disabled, and any open jobs will be cancelled. Past job/review records stay so other users keep their history. This cannot be undone.`,
+      [
+        { text: "Cancel", style: "cancel" },
+        {
+          text: "Delete forever",
+          style: "destructive",
+          onPress: () => {
+            // Double-confirm — destructive irreversible action
+            Alert.alert(
+              "Are you absolutely sure?",
+              `Tap "Yes, delete" to permanently anonymize ${u.name}.`,
+              [
+                { text: "Cancel", style: "cancel" },
+                {
+                  text: "Yes, delete",
+                  style: "destructive",
+                  onPress: async () => {
+                    try {
+                      await api(`/admin/users/${u.id}`, { method: "DELETE" });
+                      load();
+                      Alert.alert("Done", "Account anonymized.");
+                    } catch (e: any) {
+                      Alert.alert("Error", e.message);
+                    }
+                  },
+                },
+              ],
+            );
+          },
+        },
+      ],
+    );
+  };
+
   const deleteJob = (j: any) => {
     Alert.alert(
       "Delete this job?",
@@ -151,44 +188,100 @@ export default function AdminDashboard() {
           {tab === "stats" && stats ? <StatsView stats={stats} /> : null}
           {tab === "users" ? (
             <View style={{ gap: 10 }}>
-              {users.map((u) => (
-                <View key={u.id} style={[brutal.card, u.banned && { backgroundColor: "#FEE2E2" }]}>
-                  <View style={styles.userRow}>
-                    <View style={[styles.avatar, { backgroundColor: u.banned ? colors.error : colors.primary }]}>
-                      <Text style={styles.avatarLetter}>{u.name?.charAt(0).toUpperCase() || "?"}</Text>
-                    </View>
-                    <View style={{ flex: 1 }}>
-                      <View style={styles.nameRow}>
-                        <Text style={styles.userName}>{u.name}</Text>
-                        {u.is_verified ? (
-                          <View style={styles.verBadge}>
-                            <ShieldCheck size={10} color="#fff" strokeWidth={3} />
+              {(() => {
+                // Surface users with pending deletion requests at the top.
+                const sorted = [...users].sort((a, b) => {
+                  const da = a.deletion_requested ? 1 : 0;
+                  const db = b.deletion_requested ? 1 : 0;
+                  return db - da;
+                });
+                const pendingCount = sorted.filter((u) => u.deletion_requested).length;
+                return (
+                  <>
+                    {pendingCount > 0 ? (
+                      <View style={styles.deletionSummary} testID="deletion-summary">
+                        <Trash2 size={14} color="#7F1D1D" strokeWidth={2.8} />
+                        <Text style={styles.deletionSummaryText}>
+                          {pendingCount} pending deletion {pendingCount === 1 ? "request" : "requests"}
+                        </Text>
+                      </View>
+                    ) : null}
+                    {sorted.map((u) => (
+                      <View
+                        key={u.id}
+                        style={[
+                          brutal.card,
+                          u.banned && !u.deletion_requested && { backgroundColor: "#FEE2E2" },
+                          u.deletion_requested && { backgroundColor: "#FFF7ED", borderColor: "#FDBA74" },
+                          u.deleted && { backgroundColor: "#F3F4F6", opacity: 0.85 },
+                        ]}
+                        testID={`admin-user-${u.id}`}
+                      >
+                        <View style={styles.userRow}>
+                          <View style={[styles.avatar, { backgroundColor: u.banned ? colors.error : colors.primary }]}>
+                            <Text style={styles.avatarLetter}>{u.name?.charAt(0).toUpperCase() || "?"}</Text>
+                          </View>
+                          <View style={{ flex: 1 }}>
+                            <View style={styles.nameRow}>
+                              <Text style={styles.userName}>{u.name}</Text>
+                              {u.is_verified ? (
+                                <View style={styles.verBadge}>
+                                  <ShieldCheck size={10} color="#fff" strokeWidth={3} />
+                                </View>
+                              ) : null}
+                              {u.role === "admin" ? <Text style={styles.adminBadge}>ADMIN</Text> : null}
+                              {u.deleted ? <Text style={styles.deletedBadge}>DELETED</Text> : null}
+                              {u.deletion_requested ? (
+                                <Text style={styles.delReqBadge} testID={`del-req-badge-${u.id}`}>
+                                  DELETION REQUESTED
+                                </Text>
+                              ) : null}
+                            </View>
+                            <Text style={styles.userEmail}>{u.email}</Text>
+                            <Text style={styles.muted}>
+                              ⭐ {u.rating_avg?.toFixed(1) || "—"} · {u.jobs_completed} done
+                            </Text>
+                            {u.deletion_requested && u.deletion_reason ? (
+                              <Text style={styles.delReasonText} numberOfLines={3}>
+                                Reason: “{u.deletion_reason}”
+                              </Text>
+                            ) : null}
+                            {u.deletion_requested && !u.deletion_reason ? (
+                              <Text style={styles.delReasonText}>No reason provided.</Text>
+                            ) : null}
+                          </View>
+                        </View>
+                        {u.role !== "admin" && !u.deleted ? (
+                          <View style={styles.userActions}>
+                            <TouchableOpacity
+                              testID={`ban-${u.id}`}
+                              style={[styles.banBtn, u.banned && { backgroundColor: colors.success }]}
+                              onPress={() => toggleBan(u)}
+                            >
+                              {u.banned ? (
+                                <Check size={16} color="#fff" strokeWidth={3} />
+                              ) : (
+                                <Ban size={16} color="#fff" strokeWidth={3} />
+                              )}
+                              <Text style={styles.banText}>{u.banned ? "Unban" : "Ban"}</Text>
+                            </TouchableOpacity>
+                            {u.deletion_requested ? (
+                              <TouchableOpacity
+                                testID={`del-permanent-${u.id}`}
+                                style={styles.deletePermBtn}
+                                onPress={() => permanentlyDeleteUser(u)}
+                              >
+                                <Trash2 size={14} color="#fff" strokeWidth={3} />
+                                <Text style={styles.banText}>Delete</Text>
+                              </TouchableOpacity>
+                            ) : null}
                           </View>
                         ) : null}
-                        {u.role === "admin" ? <Text style={styles.adminBadge}>ADMIN</Text> : null}
                       </View>
-                      <Text style={styles.userEmail}>{u.email}</Text>
-                      <Text style={styles.muted}>
-                        ⭐ {u.rating_avg?.toFixed(1) || "—"} · {u.jobs_completed} done
-                      </Text>
-                    </View>
-                    {u.role !== "admin" ? (
-                      <TouchableOpacity
-                        testID={`ban-${u.id}`}
-                        style={[styles.banBtn, u.banned && { backgroundColor: colors.success }]}
-                        onPress={() => toggleBan(u)}
-                      >
-                        {u.banned ? (
-                          <Check size={16} color="#fff" strokeWidth={3} />
-                        ) : (
-                          <Ban size={16} color="#fff" strokeWidth={3} />
-                        )}
-                        <Text style={styles.banText}>{u.banned ? "Unban" : "Ban"}</Text>
-                      </TouchableOpacity>
-                    ) : null}
-                  </View>
-                </View>
-              ))}
+                    ))}
+                  </>
+                );
+              })()}
             </View>
           ) : null}
           {tab === "chats" ? (
@@ -519,6 +612,67 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   banText: { color: "#fff", fontWeight: "700", fontSize: 11 },
+  userActions: {
+    flexDirection: "row",
+    gap: 8,
+    marginTop: 10,
+    flexWrap: "wrap",
+  },
+  deletePermBtn: {
+    backgroundColor: "#7F1D1D",
+    borderRadius: 10,
+    paddingHorizontal: 12,
+    paddingVertical: 7,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+  },
+  deletedBadge: {
+    backgroundColor: "#6B7280",
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "800",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    letterSpacing: 0.4,
+    overflow: "hidden",
+  },
+  delReqBadge: {
+    backgroundColor: "#B91C1C",
+    color: "#fff",
+    fontSize: 9,
+    fontWeight: "800",
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 5,
+    letterSpacing: 0.4,
+    overflow: "hidden",
+  },
+  delReasonText: {
+    fontSize: 12,
+    color: "#7F1D1D",
+    fontStyle: "italic",
+    fontWeight: "500",
+    marginTop: 4,
+  },
+  deletionSummary: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#FEE2E2",
+    paddingVertical: 10,
+    paddingHorizontal: 12,
+    borderRadius: 10,
+    borderLeftWidth: 4,
+    borderLeftColor: "#B91C1C",
+  },
+  deletionSummaryText: {
+    color: "#7F1D1D",
+    fontWeight: "800",
+    fontSize: 12.5,
+    letterSpacing: -0.1,
+  },
   convoTitle: { fontWeight: "700", fontSize: 15, color: colors.text },
   viewRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
   viewText: { fontWeight: "700", color: colors.primary, fontSize: 12 },

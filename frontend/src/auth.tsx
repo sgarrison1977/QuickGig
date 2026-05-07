@@ -20,6 +20,10 @@ export type User = {
   has_background_check?: boolean;
   id_verification_paid?: boolean;
   created_at?: string;
+  deletion_requested?: boolean;
+  deletion_requested_at?: string | null;
+  deletion_reason?: string | null;
+  deleted?: boolean;
 };
 
 type AuthState = {
