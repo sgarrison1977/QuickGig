@@ -26,6 +26,8 @@ import {
   Eye,
   Trash2,
   MapPin,
+  Search,
+  X,
 } from "lucide-react-native";
 import { api } from "../../src/api";
 import { useAuth } from "../../src/auth";
@@ -39,6 +41,7 @@ export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>("stats");
   const [stats, setStats] = useState<any>(null);
   const [users, setUsers] = useState<any[]>([]);
+  const [userSearch, setUserSearch] = useState("");
   const [convos, setConvos] = useState<any[]>([]);
   const [jobs, setJobs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
@@ -188,16 +191,64 @@ export default function AdminDashboard() {
           {tab === "stats" && stats ? <StatsView stats={stats} /> : null}
           {tab === "users" ? (
             <View style={{ gap: 10 }}>
+              <View style={styles.searchWrap}>
+                <Search size={16} color={colors.textSecondary} strokeWidth={2.4} />
+                <TextInput
+                  testID="admin-user-search"
+                  style={styles.searchInput}
+                  value={userSearch}
+                  onChangeText={setUserSearch}
+                  placeholder="Search users by name or email"
+                  placeholderTextColor={colors.textSecondary}
+                  autoCorrect={false}
+                  autoCapitalize="none"
+                  returnKeyType="search"
+                />
+                {userSearch.length > 0 ? (
+                  <TouchableOpacity
+                    testID="admin-user-search-clear"
+                    onPress={() => setUserSearch("")}
+                    hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
+                  >
+                    <X size={16} color={colors.textSecondary} strokeWidth={2.6} />
+                  </TouchableOpacity>
+                ) : null}
+              </View>
               {(() => {
+                // Filter by name/email — case-insensitive, partial match.
+                const q = userSearch.trim().toLowerCase();
+                const filtered = q
+                  ? users.filter(
+                      (u) =>
+                        (u.name || "").toLowerCase().includes(q) ||
+                        (u.email || "").toLowerCase().includes(q),
+                    )
+                  : users;
                 // Surface users with pending deletion requests at the top.
-                const sorted = [...users].sort((a, b) => {
+                const sorted = [...filtered].sort((a, b) => {
                   const da = a.deletion_requested ? 1 : 0;
                   const db = b.deletion_requested ? 1 : 0;
                   return db - da;
                 });
                 const pendingCount = sorted.filter((u) => u.deletion_requested).length;
+                if (sorted.length === 0) {
+                  return (
+                    <View style={styles.searchEmpty} testID="admin-user-search-empty">
+                      <Text style={styles.searchEmptyText}>
+                        {q
+                          ? `No users match “${userSearch}”.`
+                          : "No users yet."}
+                      </Text>
+                    </View>
+                  );
+                }
                 return (
                   <>
+                    {q ? (
+                      <Text style={styles.searchCount} testID="admin-user-search-count">
+                        Showing {sorted.length} of {users.length}
+                      </Text>
+                    ) : null}
                     {pendingCount > 0 ? (
                       <View style={styles.deletionSummary} testID="deletion-summary">
                         <Trash2 size={14} color="#7F1D1D" strokeWidth={2.8} />
@@ -672,6 +723,40 @@ const styles = StyleSheet.create({
     fontWeight: "800",
     fontSize: 12.5,
     letterSpacing: -0.1,
+  },
+  searchWrap: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    backgroundColor: "#fff",
+    borderWidth: 1.5,
+    borderColor: colors.border,
+    borderRadius: 12,
+    paddingHorizontal: 12,
+    paddingVertical: Platform.OS === "ios" ? 10 : 4,
+  },
+  searchInput: {
+    flex: 1,
+    fontSize: 14,
+    color: colors.text,
+    fontWeight: "500",
+    paddingVertical: Platform.OS === "ios" ? 0 : 6,
+  },
+  searchEmpty: {
+    alignItems: "center",
+    paddingVertical: 24,
+  },
+  searchEmptyText: {
+    color: colors.textSecondary,
+    fontWeight: "600",
+    fontSize: 13,
+  },
+  searchCount: {
+    color: colors.textSecondary,
+    fontWeight: "700",
+    fontSize: 11.5,
+    letterSpacing: 0.4,
+    paddingHorizontal: 4,
   },
   convoTitle: { fontWeight: "700", fontSize: 15, color: colors.text },
   viewRow: { flexDirection: "row", alignItems: "center", gap: 4, marginTop: 6 },
