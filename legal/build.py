@@ -19,7 +19,8 @@ import re
 from pathlib import Path
 from html import escape
 
-ROOT = Path(__file__).resolve().parent
+ROOT = Path("/app/backend/legal")
+ROOT.mkdir(parents=True, exist_ok=True)
 SRC = Path("/app/frontend/src")
 
 

@@ -17,6 +17,7 @@ from typing import List, Optional, Literal, Any, Dict
 
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.staticfiles import StaticFiles
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, Field, EmailStr
@@ -2092,6 +2093,17 @@ async def root():
 
 # include router
 app.include_router(api_router)
+
+# Serve legal documents (Privacy Policy, EULA) as static HTML for App Store /
+# Play Store reviewers.  Files live in /app/backend/legal/ and are bundled
+# with every backend deploy.
+_LEGAL_DIR = Path(__file__).resolve().parent / "legal"
+if _LEGAL_DIR.is_dir():
+    app.mount(
+        "/api/legal",
+        StaticFiles(directory=str(_LEGAL_DIR), html=True),
+        name="legal",
+    )
 
 app.add_middleware(
     CORSMiddleware,
