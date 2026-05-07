@@ -3,7 +3,7 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useRouter } from "expo-router";
 import { ArrowLeft, Lock } from "lucide-react-native";
 import { colors } from "../src/theme";
-import { PRIVACY_TEXT, PRIVACY_VERSION, PRIVACY_EFFECTIVE_DATE } from "../src/privacyText";
+import { PRIVACY_TEXT, PRIVACY_VERSION, PRIVACY_EFFECTIVE_DATE, PRIVACY_LAST_UPDATED } from "../src/privacyText";
 
 export default function PrivacyScreen() {
   const router = useRouter();
@@ -21,7 +21,7 @@ export default function PrivacyScreen() {
       </View>
       <ScrollView contentContainerStyle={styles.body}>
         <Text style={styles.meta}>
-          Version {PRIVACY_VERSION} · Effective {PRIVACY_EFFECTIVE_DATE}
+          Version {PRIVACY_VERSION} · Effective {PRIVACY_EFFECTIVE_DATE} · Updated {PRIVACY_LAST_UPDATED}
         </Text>
         <Text style={styles.text}>{PRIVACY_TEXT}</Text>
       </ScrollView>
