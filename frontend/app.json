@@ -11,7 +11,7 @@
     "primaryColor": "#FF6B6B",
     "description": "QuickGig is a neighborhood marketplace for posting and accepting small local jobs — lawn care, cleaning, handyman, errands, moving help, and more.",
     "ios": {
-      "bundleIdentifier": "quickgig.app",
+      "bundleIdentifier": "quickgig.myapp",
       "supportsTablet": true,
       "config": {
         "googleMapsApiKey": "AIzaSyDiuBkaCunUpvH9HwyLX7_hejVO0l9bW5c"
@@ -26,7 +26,7 @@
       }
     },
     "android": {
-      "package": "quickgig.app",
+      "package": "quickgig.myapp",
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyDiuBkaCunUpvH9HwyLX7_hejVO0l9bW5c"
