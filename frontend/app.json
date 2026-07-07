@@ -83,7 +83,8 @@
           "color": "#FF6B6B",
           "defaultChannel": "default"
         }
-      ]
+      ],
+      "expo-font"
     ],
     "experiments": {
       "typedRoutes": true
