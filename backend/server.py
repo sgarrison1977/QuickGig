@@ -2071,6 +2071,40 @@ async def seed_admin():
             await db.users.update_one({"email": admin_email}, {"$set": {"role": "admin"}})
 
 
+async def seed_reviewer():
+    """Seed a permanent test account for Google Play / App Store review teams.
+
+    Reviewers need a way to sign in without registering. This account is
+    idempotently created (never overwritten) so a redeploy won't reset it,
+    but if it ever gets deleted this function will restore it on next boot.
+    """
+    reviewer_email = os.environ.get(
+        "REVIEWER_EMAIL", "googleplay.reviewer@quickgig.app"
+    ).lower()
+    reviewer_password = os.environ.get("REVIEWER_PASSWORD", "GooglePlay2026!")
+    existing = await db.users.find_one({"email": reviewer_email}, {"_id": 0})
+    if not existing:
+        await db.users.insert_one({
+            "id": str(uuid.uuid4()),
+            "email": reviewer_email,
+            "password_hash": hash_password(reviewer_password),
+            "name": "Google Play Reviewer",
+            "phone": "",
+            "bio": "Test account for Google Play Console / App Store review.",
+            "avatar": None,
+            "id_document": None,
+            "is_verified": True,
+            "role": "user",
+            "banned": False,
+            "rating_avg": 5.0,
+            "rating_count": 1,
+            "jobs_completed": 0,
+            "created_at": datetime.now(timezone.utc),
+            "eula_accepted_at": datetime.now(timezone.utc),
+            "eula_version": CURRENT_EULA_VERSION,
+        })
+
+
 @app.on_event("startup")
 async def on_startup():
     try:
@@ -2084,6 +2118,7 @@ async def on_startup():
     except Exception as e:
         logging.warning(f"Index error: {e}")
     await seed_admin()
+    await seed_reviewer()
 
 
 @api_router.get("/")
