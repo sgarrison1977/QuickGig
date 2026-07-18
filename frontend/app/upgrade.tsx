@@ -16,6 +16,7 @@ import { api } from "../src/api";
 import { useAuth } from "../src/auth";
 import { colors, brutal } from "../src/theme";
 import { startCheckout } from "../src/billing";
+import { MONETIZATION_ENABLED } from "../src/features";
 
 export default function Upgrade() {
   const router = useRouter();
@@ -24,6 +25,64 @@ export default function Upgrade() {
   const [busy, setBusy] = useState<string | null>(null);
 
   if (!user) return null;
+
+  // Monetization is disabled for the initial Play Store release (v1.0.1).
+  // Show a friendly "coming soon" screen instead of the paid tiers so the
+  // Stripe flow can never be reached from the shipped app. Backend endpoints
+  // remain wired up for the eventual Google Play Billing bridge (v1.1+).
+  if (!MONETIZATION_ENABLED) {
+    return (
+      <SafeAreaView style={styles.safe} edges={["top", "bottom"]}>
+        <ScrollView contentContainerStyle={styles.container}>
+          <TouchableOpacity
+            testID="back-btn"
+            onPress={() =>
+              router.canGoBack() ? router.back() : router.replace("/(tabs)/profile")
+            }
+            style={styles.back}
+          >
+            <ArrowLeft size={22} color={colors.text} strokeWidth={2.5} />
+          </TouchableOpacity>
+
+          <Text style={styles.header}>Pro perks{"\n"}coming soon</Text>
+          <Text style={styles.sub}>
+            We&apos;re finishing up premium features like priority placement and
+            trusted-worker badges. Everything you need is 100% free right now —
+            keep posting and accepting gigs to build your reputation.
+          </Text>
+
+          <View style={{ marginTop: 24, gap: 12 }}>
+            <View style={styles.card}>
+              <View style={styles.cardHead}>
+                <View style={styles.iconCircle}>
+                  <Crown size={22} color="#fff" strokeWidth={2.4} />
+                </View>
+                <Text style={styles.cardTitle}>Pro Worker</Text>
+              </View>
+              <Text style={{ color: colors.textMuted, marginTop: 8 }}>
+                Priority placement in search results. Coming with a future
+                update.
+              </Text>
+            </View>
+
+            <View style={styles.card}>
+              <View style={styles.cardHead}>
+                <View
+                  style={[styles.iconCircle, { backgroundColor: colors.secondary }]}
+                >
+                  <ShieldCheck size={22} color="#fff" strokeWidth={2.4} />
+                </View>
+                <Text style={styles.cardTitle}>Background Check</Text>
+              </View>
+              <Text style={{ color: colors.textMuted, marginTop: 8 }}>
+                Premium trust badge — coming soon.
+              </Text>
+            </View>
+          </View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
 
   const subscribePro = async () => {
     setBusy("pro");
@@ -106,11 +165,6 @@ export default function Upgrade() {
 
         <Text style={styles.header}>Upgrade your{"\n"}QuickGig</Text>
         <Text style={styles.sub}>Stand out. Earn more trust. Win more jobs.</Text>
-
-        <View style={styles.demoBanner}>
-          <Sparkles size={12} color={colors.warning} strokeWidth={2.5} />
-          <Text style={styles.demoText}>Demo mode — purchases are mocked (no real charge)</Text>
-        </View>
 
         {/* Pro Worker */}
         <View style={[styles.card, { backgroundColor: "transparent", padding: 0 }]}>

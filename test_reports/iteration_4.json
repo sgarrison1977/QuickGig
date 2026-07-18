@@ -1,0 +1,53 @@
+{
+  "summary": "Verified v1.0.1 Play Store monetization gating. All 8 review-request assertions PASS. MONETIZATION_ENABLED=false correctly hides every Stripe entry point: (a) Browse: UpsellBanner absent (no 'Become a Pro Worker'/'Get Background Checked'). (b) Profile: upgradeRow block absent, testIDs go-pro-cta and bg-check-cta both render 0 times, no '$4.99'/'$10 once' strings. (c) Post: boost section absent (no 'Boost this post', 'No boost', 'Post Job + Boost' text), submit button reads 'Post Job'; startCheckout guard on line 150 also confirmed via source review. (d) /upgrade deep-link renders 'Pro perks coming soon' screen — startCheckout is unreachable. (e) grep confirmed 'Demo mode' and 'purchases are mocked' strings are fully removed from /app/frontend. (f) Reviewer login works (googleplay.reviewer@quickgig.app). (g) All 4 screens load cleanly with no red-screen or unhandled promise rejections. Backend regression: 6/6 pytest cases pass — /api/billing/checkout still reachable (401 unauth, 200/valid auth path, 422 on bad package), /api/billing/catalog returns 200, /api/auth/me works for reviewer. Backend was NOT modified.",
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {
+        "screen": "/upgrade (coming-soon variant)",
+        "issues": [
+          "Minor: iconCircle style has backgroundColor 'rgba(255,255,255,0.25)' (designed for gradient cards). On the new white 'Pro perks coming soon' screen, the circle plus its white-stroke Crown/ShieldCheck icons render nearly invisible against the white background, causing the icons to visually overlap the 'Pro Worker' / 'Background Check' labels. Not a Play Store blocker — text is readable — but consider giving the coming-soon variant a solid backgroundColor (e.g. colors.primary / colors.secondary) and dark icon strokes. Reference: /app/frontend/app/upgrade.tsx:55-80 + styles.iconCircle at line 339."
+        ]
+      }
+    ],
+    "react_native_issues": []
+  },
+  "assertions_verified": {
+    "features_ts_exports_flag_false": "PASS — /app/frontend/src/features.ts exports MONETIZATION_ENABLED=false",
+    "browse_upsell_banner_hidden": "PASS — no promo cards rendered; source line 285 wraps <UpsellBanner> in {MONETIZATION_ENABLED ? ... : null}",
+    "profile_upgrade_row_hidden": "PASS — testIDs go-pro-cta=0, bg-check-cta=0; no $4.99/$10 once text; source lines 255-292 wrap entire <View styles.upgradeRow>",
+    "post_boost_section_hidden": "PASS — no 'Boost this post', 'No boost', or BoostOption text; source line 327 wraps the whole boost block",
+    "post_submit_button_text": "PASS — reads 'Post Job' (line 371 checks MONETIZATION_ENABLED && boostPlan)",
+    "post_submit_boost_logic_guarded": "PASS — line 150 checks `if (MONETIZATION_ENABLED && boostPlan)` before startCheckout()",
+    "upgrade_deeplink_shows_coming_soon": "PASS — early-return at line 33 renders 'Pro perks coming soon'; startCheckout unreachable",
+    "no_demo_mode_strings": "PASS — grep for 'Demo mode' and 'purchases are mocked' across /app/frontend returned zero matches",
+    "reviewer_login_and_navigation": "PASS — login worked, Browse/Post/Profile/upgrade all rendered cleanly, no red screens, no pageerrors",
+    "backend_billing_checkout_untouched": "PASS — /api/billing/checkout returns 401 (unauth), valid 4xx/2xx with reviewer token, 422 on bad package_id; /api/billing/catalog 200"
+  },
+  "test_report_links": [
+    "/app/backend/tests/test_monetization_gate.py",
+    "/app/test_reports/pytest/monetization_gate.xml",
+    "/app/test_reports/iteration_4.json"
+  ],
+  "action_items": [
+    "OPTIONAL / low priority: fix the invisible icon circles on the /upgrade coming-soon screen (see design_issues). Cosmetic only — will not affect Play Store review outcome.",
+    "Ready to ship v1.0.1 to Play Console. No monetization CTA is reachable in the shipped app; Google Play policy risk is mitigated."
+  ],
+  "critical_code_review_comments": [
+    "Good architectural choice: single MONETIZATION_ENABLED flag in /app/frontend/src/features.ts keeps the gating logic centralized. Flipping to true after Play Billing integration will re-enable everything atomically.",
+    "post.tsx line 150 correctly guards startCheckout() at the imperative call site (not just the UI). This is the important belt-and-suspenders check — even if the boost UI accidentally leaks back later, no Stripe call fires unless the flag is true.",
+    "upgrade.tsx uses an early-return at line 33 before ANY startCheckout binding is invoked, so deep-linking to /upgrade?focus=pro or /upgrade?focus=bg from any lingering internal link is also safe.",
+    "Backend /api/billing/* endpoints remain unchanged and functional, which preserves the web/iOS TestFlight path and the eventual Play Billing bridge."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_monetization_gate.py (new — regression coverage)"
+  ],
+  "success_rate": {"backend": "100% (6/6)", "frontend": "100% (8/8 assertions)"},
+  "seed_data_creation": "None — reused auto-seeded googleplay.reviewer@quickgig.app account.",
+  "retest_needed": false,
+  "should_main_agent_self_test": false,
+  "context_for_next_testing_agent": "MONETIZATION_ENABLED is a compile-time constant flip in /app/frontend/src/features.ts. If future iterations re-enable it (v1.1 with Play Billing), ensure ALL FIVE guarded sites flip together: browse.tsx:285, profile.tsx:255, post.tsx:150 (imperative), post.tsx:327 (UI), post.tsx:371 (button label), upgrade.tsx:33 (early return). Search: `grep -rn MONETIZATION_ENABLED /app/frontend`.",
+  "rca_of_issue": "Not a bug fix — this iteration validates a policy-compliance change. Google Play blocks digital IAP via Stripe; the app must not surface any Stripe entry point in the shipping build. All six code sites were correctly guarded, and the pre-existing 'Demo mode — purchases are mocked' banner (deceptive-behavior rejection risk) has been fully removed from the frontend tree."
+}

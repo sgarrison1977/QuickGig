@@ -27,6 +27,7 @@ import { MapErrorBoundary } from "../../src/MapErrorBoundary";
 import { JobListSkeleton } from "../../src/Skeletons";
 import { EmptyState } from "../../src/EmptyState";
 import { UpsellBanner } from "../../src/UpsellBanner";
+import { MONETIZATION_ENABLED } from "../../src/features";
 import { useAuth } from "../../src/auth";
 
 const FILTERS_STORAGE_KEY = "qg_browse_filters_v1";
@@ -281,7 +282,9 @@ export default function Browse() {
             </View>
 
             {/* Eye-catching upsell — Pro Worker + Background Check */}
-            <UpsellBanner isPro={user?.is_pro} hasBackgroundCheck={user?.has_background_check} />
+            {MONETIZATION_ENABLED ? (
+              <UpsellBanner isPro={user?.is_pro} hasBackgroundCheck={user?.has_background_check} />
+            ) : null}
 
             <View style={styles.resultsHead}>
               <Text style={styles.resultsTitle}>

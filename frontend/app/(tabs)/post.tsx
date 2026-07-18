@@ -21,6 +21,7 @@ import { api, CATEGORIES } from "../../src/api";
 import { useAuth } from "../../src/auth";
 import { colors, brutal } from "../../src/theme";
 import { startCheckout } from "../../src/billing";
+import { MONETIZATION_ENABLED } from "../../src/features";
 
 export default function PostJob() {
   const router = useRouter();
@@ -146,7 +147,7 @@ export default function PostJob() {
         },
       });
       // Apply boost if selected — opens real Stripe Checkout
-      if (boostPlan) {
+      if (MONETIZATION_ENABLED && boostPlan) {
         try {
           const pkg = boostPlan === "24h" ? "boost_24h" : "boost_48h";
           const status = await startCheckout(pkg as any, { jobId: job.id });
@@ -323,6 +324,8 @@ export default function PostJob() {
           {err ? <Text style={styles.err} testID="post-error">{err}</Text> : null}
 
           {/* Boost options */}
+          {MONETIZATION_ENABLED ? (
+          <>
           <Text style={brutal.caption}>Boost this post (optional)</Text>
           <View style={styles.boostRow}>
             <BoostOption
@@ -350,8 +353,10 @@ export default function PostJob() {
             />
           </View>
           <Text style={styles.boostNote}>
-            🚀 Boosted posts appear at the top of Browse with a glowing ribbon. You'll be charged at checkout.
+            🚀 Boosted posts appear at the top of Browse with a glowing ribbon. You&apos;ll be charged at checkout.
           </Text>
+          </>
+          ) : null}
 
           <TouchableOpacity
             testID="post-submit"
@@ -363,7 +368,7 @@ export default function PostJob() {
               <ActivityIndicator color="#fff" />
             ) : (
               <Text style={brutal.buttonText}>
-                {boostPlan
+                {MONETIZATION_ENABLED && boostPlan
                   ? `Post Job + Boost (${boostPlan === "24h" ? "$2" : "$5"})`
                   : "Post Job"}
               </Text>

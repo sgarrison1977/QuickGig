@@ -38,6 +38,7 @@ import {
 import { useAuth } from "../../src/auth";
 import { api } from "../../src/api";
 import { colors, brutal, shadows } from "../../src/theme";
+import { MONETIZATION_ENABLED } from "../../src/features";
 import { JobCard } from "./browse";
 import { CollapsibleSection } from "../../src/CollapsibleSection";
 import { getNotifSettings, setNotifEnabled, registerForPushNotifications } from "../../src/notifications";
@@ -251,6 +252,7 @@ export default function Profile() {
         {!user.is_verified ? null : null}
 
         {/* Upgrade CTAs - always visible & prominent */}
+        {MONETIZATION_ENABLED ? (
         <View style={styles.upgradeRow}>
           <TouchableOpacity
             testID="go-pro-cta"
@@ -287,6 +289,7 @@ export default function Profile() {
             </View>
           </TouchableOpacity>
         </View>
+        ) : null}
 
         {/* Notifications toggle */}
         <View style={styles.notifRow} testID="notif-row">
