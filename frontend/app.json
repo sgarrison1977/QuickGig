@@ -2,7 +2,7 @@
   "expo": {
     "name": "QuickGig",
     "slug": "quickgig",
-    "version": "1.0.1",
+    "version": "1.0.2",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
     "scheme": "quickgig",
@@ -12,7 +12,7 @@
     "description": "QuickGig is a neighborhood marketplace for posting and accepting small local jobs — lawn care, cleaning, handyman, errands, moving help, and more.",
     "ios": {
       "bundleIdentifier": "quickgig.myapp",
-      "buildNumber": "112",
+      "buildNumber": "113",
       "supportsTablet": true,
       "config": {
         "googleMapsApiKey": "AIzaSyDiuBkaCunUpvH9HwyLX7_hejVO0l9bW5c"
@@ -28,7 +28,7 @@
     },
     "android": {
       "package": "quickgig.myapp",
-      "versionCode": 112,
+      "versionCode": 113,
       "config": {
         "googleMaps": {
           "apiKey": "AIzaSyDiuBkaCunUpvH9HwyLX7_hejVO0l9bW5c"
