@@ -54,12 +54,12 @@ export default function Upgrade() {
           <View style={{ marginTop: 24, gap: 12 }}>
             <View style={styles.card}>
               <View style={styles.cardHead}>
-                <View style={styles.iconCircle}>
+                <View style={[styles.iconCircle, { backgroundColor: colors.primary }]}>
                   <Crown size={22} color="#fff" strokeWidth={2.4} />
                 </View>
-                <Text style={styles.cardTitle}>Pro Worker</Text>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>Pro Worker</Text>
               </View>
-              <Text style={{ color: colors.textMuted, marginTop: 8 }}>
+              <Text style={{ color: colors.textMuted, marginTop: 12 }}>
                 Priority placement in search results. Coming with a future
                 update.
               </Text>
@@ -72,9 +72,9 @@ export default function Upgrade() {
                 >
                   <ShieldCheck size={22} color="#fff" strokeWidth={2.4} />
                 </View>
-                <Text style={styles.cardTitle}>Background Check</Text>
+                <Text style={[styles.cardTitle, { color: colors.text }]}>Background Check</Text>
               </View>
-              <Text style={{ color: colors.textMuted, marginTop: 8 }}>
+              <Text style={{ color: colors.textMuted, marginTop: 12 }}>
                 Premium trust badge — coming soon.
               </Text>
             </View>
